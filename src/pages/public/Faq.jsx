@@ -1,28 +1,13 @@
+import { EMERGENCY_LINE } from '../../data/constants.js'
+
 const faqs = [
-  {
-    q: 'What should I do if I see a sewage leak?',
-    a: 'Keep away from it, keep children and pets away, and report it on this site with a photo if you can. Do not try to open or clear a manhole yourself.',
-  },
-  {
-    q: 'Do I need an account to report a leak?',
-    a: 'No. Anyone can report. You can leave your name and phone number if you want the City to contact you, but it is optional.',
-  },
-  {
-    q: 'How do I check on my report?',
-    a: 'After you report, you get a reference number like INC-1016. Enter it on the Track a report page to see whether a crew has been assigned and when it was fixed.',
-  },
-  {
-    q: 'How do the sensors find leaks?',
-    a: 'Sensors in manholes measure how high the water is. Rising water means a blockage. Flow meters on pipes compare how much sewage goes in and comes out. If less comes out, the pipe is leaking. Pressure sensors on pumped pipes and power sensors on pumps catch bursts and failing pumps.',
-  },
-  {
-    q: 'Why report if there are sensors?',
-    a: 'Sensors are placed on the most important parts of the network. Residents see problems everywhere else. Reports and sensors together give the City the full picture.',
-  },
-  {
-    q: 'What happens after I report?',
-    a: 'Your report appears on the City dashboard straight away. An official checks it, assigns a crew, and marks it resolved once it has been fixed.',
-  },
+  { q: 'What should I do if I see a sewage leak?', a: `Keep away from it, keep children and pets away, and report it here with a photo if you can. Never open or clear a manhole yourself. If sewage is entering homes, also call ${EMERGENCY_LINE}.` },
+  { q: 'Do I need an account to report?', a: 'No. Anyone can report. Leave your name and number only if you want SMS updates.' },
+  { q: 'What happens to my personal information?', a: 'Your name and phone number are optional. If you give them, they are only used to send you updates about your report, are not shown publicly and are not shared. This follows the Protection of Personal Information Act (POPIA).' },
+  { q: 'Someone already reported it. Should I still report?', a: 'Yes. When you report, we show problems already reported nearby. Adding your report to an existing one tells the City more people are affected, which raises its priority.' },
+  { q: 'How do I check on my report?', a: 'You get a reference number like RPT-2005. Enter it on the Track a report page to see whether a crew has been assigned and when it was fixed.' },
+  { q: 'How do the sensors find problems?', a: 'Level sensors in manholes measure how full they are. Flow sensors measure how fast sewage moves. Pressure sensors watch the pumped pipes. When sewage backs up before a point and less comes out after it, there is a blockage. When less arrives than left, there is a leak.' },
+  { q: 'Why report if there are sensors?', a: 'Sensors are only placed at the most important points, and sensors can fail. Residents see problems everywhere else and catch what a broken sensor misses.' },
 ]
 
 export default function Faq() {

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
-import { useAuth } from '../auth/AuthContext.js'
-import AdminLoginModal from '../components/AdminLoginModal.jsx'
+import { useStore } from '../data/StoreContext.js'
+import { ROLE_HOME } from '../data/constants.js'
+import LoginModal from '../components/LoginModal.jsx'
 
 const links = [
   { to: '/', label: 'Home', end: true },
@@ -15,16 +16,14 @@ const links = [
 export default function PublicLayout() {
   const [params, setParams] = useSearchParams()
   const [menuOpen, setMenuOpen] = useState(false)
-  const { isAdmin } = useAuth()
+  const { user } = useStore()
   const navigate = useNavigate()
-
-  // The login modal is controlled by ?login=1 so it can be opened from anywhere.
   const loginOpen = params.get('login') === '1'
 
-  function openAdmin() {
+  function openLogin() {
     setMenuOpen(false)
-    if (isAdmin) {
-      navigate('/admin')
+    if (user) {
+      navigate(ROLE_HOME[user.role])
       return
     }
     const next = new URLSearchParams(params)
@@ -38,8 +37,7 @@ export default function PublicLayout() {
     setParams(next)
   }
 
-  const linkClass = ({ isActive }) =>
-    `text-lg font-bold text-white decoration-2 underline-offset-8 hover:underline ${isActive ? 'underline' : ''}`
+  const linkClass = ({ isActive }) => `text-lg font-bold text-white decoration-2 underline-offset-8 hover:underline ${isActive ? 'underline' : ''}`
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -52,16 +50,13 @@ export default function PublicLayout() {
               </NavLink>
             ))}
           </nav>
-
           <button onClick={() => setMenuOpen((o) => !o)} className="p-2 text-white md:hidden" aria-label="Menu">
             {menuOpen ? <X /> : <Menu />}
           </button>
-
-          <button onClick={openAdmin} className="rounded-full bg-white px-6 py-2 text-lg font-bold text-slate-900 hover:bg-slate-100">
-            Admin
+          <button onClick={openLogin} className="rounded-full bg-white px-6 py-2 text-lg font-bold text-slate-900 hover:bg-slate-100">
+            {user ? 'Dashboard' : 'Admin'}
           </button>
         </div>
-
         {menuOpen && (
           <nav className="flex flex-col gap-1 border-t border-white/20 px-4 pb-4 pt-2 md:hidden">
             {links.map((l) => (
@@ -87,7 +82,7 @@ export default function PublicLayout() {
         Sewage Maintenance System. Built by Hacker Wolves.
       </footer>
 
-      {loginOpen && <AdminLoginModal onClose={closeLogin} />}
+      {loginOpen && <LoginModal onClose={closeLogin} />}
     </div>
   )
 }

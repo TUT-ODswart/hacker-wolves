@@ -1,4 +1,8 @@
-// All demo data lives here. Numbers are made up but realistic.
+import { DAY, HOUR, MINUTE } from '../utils/format.js'
+import { analyzeNetwork } from './model.js'
+import { dueAt, iso, makePriority } from './helpers.js'
+
+export const STATE_VERSION = 4
 
 export const AREAS = [
   { name: 'Soshanguve', lat: -25.525, lng: 28.1 },
@@ -7,46 +11,112 @@ export const AREAS = [
   { name: 'Winterveld', lat: -25.415, lng: 27.99 },
 ]
 
-export const CREWS = ['Crew A', 'Crew B', 'Crew C', 'Crew D']
-
-export const REPORT_TYPES = [
-  'Overflowing manhole',
-  'Leaking pipe',
-  'Sewage on the street',
-  'Blocked drain',
-  'Bad smell',
-  'Other',
-]
-
-export const SENSOR_TYPES = {
-  level: {
-    label: 'Water level',
-    unit: 'cm',
-    threshold: 120,
-    explanation: 'Water rising in a manhole means a blockage downstream. If it keeps rising, the manhole overflows.',
-  },
-  flow: {
-    label: 'Flow loss',
-    unit: '%',
-    threshold: 10,
-    explanation: 'Less sewage arriving at the second flow meter than left the first means it is leaking out of the pipe.',
-  },
-  pressure: {
-    label: 'Pipe pressure',
-    unit: 'bar',
-    threshold: 3,
-    below: true,
-    explanation: 'Pressure dropping in a pumped pipe means it is leaking or has burst.',
-  },
-  pump: {
-    label: 'Pump current',
-    unit: 'A',
-    threshold: 45,
-    explanation: 'A pump drawing more power than usual is straining, usually because of a blockage or wear.',
-  },
+// [landmark, criticality 1-5, why it matters]
+const LANDMARKS = {
+  Soshanguve: [
+    ['Block L, near the tuck shop', 3, 'Busy residential street'],
+    ['Block H, Mahlangu Street', 2, 'Quiet residential street'],
+    ['Block X taxi rank', 4, 'Busy taxi rank'],
+    ['Opposite Block F clinic', 5, 'Next to a clinic'],
+    ['Block F park', 4, 'Park where children play'],
+  ],
+  Mabopane: [
+    ['Unit C main line', 2, 'Residential street'],
+    ['Block B, opposite the clinic', 5, 'Next to a clinic'],
+    ['Block E, near the primary school', 5, 'Near a primary school'],
+    ['Unit U feeder line', 2, 'Residential street'],
+    ['Mabopane station', 4, 'Busy station and taxi rank'],
+  ],
+  'Ga-Rankuwa': [
+    ['Zone 16 taxi rank', 4, 'Busy taxi rank'],
+    ['Zone 5, next to the church', 3, 'Church and busy street'],
+    ['Zone 1 shopping centre', 4, 'Busy shopping area'],
+    ['Zone 9, near the high school', 5, 'Near a high school'],
+    ['Zone 2 community hall', 3, 'Community hall'],
+  ],
+  Winterveld: [
+    ['Winterveld community hall', 3, 'Community hall'],
+    ['Stand 1022, main road', 3, 'Main road'],
+    ['Clinic road', 5, 'Near a clinic'],
+    ['Winterveld market', 4, 'Busy market'],
+    ['Sports ground', 2, 'Open sports ground'],
+  ],
 }
 
-// Small seeded random generator so the sensor list is the same every time.
+const DEPTHS = [160, 180, 150, 200, 170]
+
+export const DEFAULT_SETTINGS = {
+  orgName: 'City of Tshwane',
+  heartbeatMinutes: 15,
+  missedBeats: 3,
+  thresholds: { levelWarnPct: 60, levelAlertPct: 80, flowDropPct: 30, pressureMin: 3 },
+  sla: { High: 24, Medium: 72, Low: 168 },
+  escalationMinutes: 30,
+  notify: { smsResidents: true, smsCrews: true, emailManagers: true },
+  rainForecast: false,
+}
+
+const USERS = [
+  { id: 'U-1', name: 'Naledi Mokoena', email: 'admin@gmail.com', password: 'admin123', role: 'admin', phone: '071 555 0101', crewId: null },
+  { id: 'U-2', name: 'Johan van Wyk', email: 'supervisor@gmail.com', password: 'super123', role: 'supervisor', phone: '072 555 0102', crewId: null },
+  { id: 'U-3', name: 'Refilwe Dlamini', email: 'manager@gmail.com', password: 'manager123', role: 'manager', phone: '073 555 0103', crewId: null },
+  { id: 'U-4', name: 'Sipho Nkosi', email: 'tech@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0104', crewId: 'C-A' },
+  { id: 'U-5', name: 'Thabo Mahlangu', email: 'thabo@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0105', crewId: 'C-A' },
+  { id: 'U-6', name: 'Lerato Molefe', email: 'lerato@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0106', crewId: 'C-B' },
+  { id: 'U-7', name: 'Kagiso Sithole', email: 'kagiso@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0107', crewId: 'C-B' },
+  { id: 'U-8', name: 'Pieter Botha', email: 'pieter@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0108', crewId: 'C-C' },
+  { id: 'U-9', name: 'Mpho Ndlovu', email: 'mpho@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0109', crewId: 'C-D' },
+].map((u) => ({ ...u, active: true }))
+
+const CREWS = [
+  { id: 'C-A', name: 'Crew A', area: 'Soshanguve', active: true },
+  { id: 'C-B', name: 'Crew B', area: 'Mabopane', active: true },
+  { id: 'C-C', name: 'Crew C', area: 'Ga-Rankuwa', active: true },
+  { id: 'C-D', name: 'Crew D', area: 'Winterveld', active: true },
+]
+
+function buildNetwork() {
+  const assets = []
+  const sensors = []
+  let n = 1
+  const addSensor = (assetId, type, battery) =>
+    sensors.push({ id: `S-${String(n++).padStart(3, '0')}`, assetId, type, battery, installedYear: 2025, fault: null })
+
+  AREAS.forEach((area, ai) => {
+    const a = ai + 1
+    for (let i = 1; i <= 6; i++) {
+      const pump = i === 6
+      const id = pump ? `PS-${a}` : `MH-${a}0${i}`
+      const [landmark, criticality, note] = pump ? [`${area.name} pump station`, 5, 'Serves about 6,000 households'] : LANDMARKS[area.name][i - 1]
+      assets.push({
+        id,
+        type: pump ? 'pump_station' : 'manhole',
+        name: pump ? `${area.name} pump station` : `Manhole ${id}`,
+        landmark,
+        area: area.name,
+        lat: +(area.lat + (i - 3.5) * 0.0042 + (i % 2) * 0.0011).toFixed(5),
+        lng: +(area.lng + (i - 3.5) * 0.0052).toFixed(5),
+        depthCm: pump ? 300 : DEPTHS[i - 1],
+        baseFlowLps: pump ? null : 4 + 2 * i,
+        installedYear: 1982 + ((ai * 7 + i * 5) % 32),
+        criticality,
+        criticalityNote: note,
+        downstreamId: pump ? null : i === 5 ? `PS-${a}` : `MH-${a}0${i + 1}`,
+        scenario: null,
+      })
+      const battery = 55 + ((ai * 13 + i * 17) % 45)
+      if (pump) {
+        addSensor(id, 'pressure', battery)
+        addSensor(id, 'level', battery - 5)
+      } else {
+        addSensor(id, 'level', battery)
+        if (i % 2 === 1) addSensor(id, 'flow', battery - 3)
+      }
+    }
+  })
+  return { assets, sensors }
+}
+
 function seeded(seed) {
   let a = seed
   return () => {
@@ -58,100 +128,295 @@ function seeded(seed) {
   }
 }
 
-function makeSensors() {
-  const rand = seeded(42)
-  const types = Object.keys(SENSOR_TYPES)
-  const list = []
+// Six months of completed repairs so the analytics have something to show.
+function buildHistory(now, assets) {
+  const rand = seeded(7)
+  const manholes = assets.filter((a) => a.type === 'manhole')
+  const incidents = []
+  const workOrders = []
+  const counts = [9, 9, 10, 9, 10, 8]
+  const proactiveShare = [0.2, 0.3, 0.4, 0.5, 0.6, 0.72]
+  const responseHrs = [16, 13, 10, 7, 5, 3]
+  const reactiveTypes = ['Overflowing manhole', 'Sewage on the street', 'Blocked drain']
+  let inc = 1001
+  let wo = 3001
 
-  for (let n = 1; n <= 300; n++) {
-    const area = AREAS[Math.floor(rand() * AREAS.length)].name
-    const type = types[Math.floor(rand() * types.length)]
-    const r = rand()
-    let status = 'Online'
-    if (r > 0.97) status = 'Offline'
-    else if (r > 0.93) status = 'Alert'
-    else if (r > 0.87) status = 'Warning'
+  counts.forEach((count, m) => {
+    const monthsAgo = 6 - m
+    for (let k = 0; k < count; k++) {
+      const asset = rand() < 0.35 ? manholes[Math.floor(rand() * 5)] : manholes[Math.floor(rand() * manholes.length)]
+      const proactive = rand() < proactiveShare[m]
+      const resident = !proactive && rand() < 0.6
+      const reported = now - monthsAgo * 30 * DAY + (k / count) * 27 * DAY + rand() * DAY
+      const assigned = reported + responseHrs[m] * (0.5 + rand()) * HOUR
+      const resolved = assigned + (proactive ? 3 + rand() * 8 : 6 + rand() * 20) * HOUR
+      const type = proactive ? (rand() < 0.75 ? 'Blockage' : 'Pipe leak') : resident ? reactiveTypes[Math.floor(rand() * 3)] : 'Overflowing manhole'
+      const crewId = ['C-A', 'C-B', 'C-C', 'C-D'][AREAS.findIndex((x) => x.name === asset.area)]
+      const incId = `INC-${inc++}`
+      const woId = `WO-${wo++}`
+      const note = proactive ? 'Cleared build-up before it overflowed.' : 'Cleared blockage, cleaned and disinfected the area.'
 
-    const battery = status === 'Offline' ? Math.floor(rand() * 12) : 20 + Math.floor(rand() * 81)
-    const lastReadingMin = status === 'Offline' ? 360 + Math.floor(rand() * 1200) : 1 + Math.floor(rand() * 15)
+      incidents.push({
+        id: incId,
+        source: resident ? 'resident' : 'sensor',
+        type,
+        title: `${type} at ${asset.landmark}`,
+        description: proactive ? 'Detected early from sensor trends.' : 'Sewage reached the surface.',
+        assetId: asset.id,
+        area: asset.area,
+        lat: asset.lat,
+        lng: asset.lng,
+        status: 'Resolved',
+        priority: makePriority(proactive ? 60 : 95, asset.criticality),
+        prediction: null,
+        reportIds: [],
+        crewId,
+        workOrderId: woId,
+        reportedAt: iso(reported),
+        assignedAt: iso(assigned),
+        resolvedAt: iso(resolved),
+        dueAt: iso(reported + 72 * HOUR),
+        resolutionNote: note,
+        escalated: false,
+        timeline: [
+          { at: iso(reported), text: resident ? 'Reported by a resident' : proactive ? 'Detected by sensors before any overflow' : 'Detected by sensors' },
+          { at: iso(assigned), text: `Assigned to ${crewId.replace('C-', 'Crew ')}` },
+          { at: iso(resolved), text: `Resolved: ${note}` },
+        ],
+        comments: [],
+      })
 
-    list.push({ id: `S-${String(n).padStart(3, '0')}`, area, type, status, battery, lastReadingMin })
+      workOrders.push({
+        id: woId,
+        incidentId: incId,
+        assetId: asset.id,
+        sensorId: null,
+        kind: proactive ? 'Proactive' : 'Reactive',
+        title: `${type} at ${asset.landmark}`,
+        crewId,
+        scheduledFor: iso(assigned),
+        status: 'Completed',
+        createdAt: iso(assigned),
+        createdBy: 'Johan van Wyk',
+        startedAt: iso(assigned + HOUR),
+        completedAt: iso(resolved),
+        beforePhoto: null,
+        afterPhoto: null,
+        notes: note,
+      })
+    }
+  })
+  return { incidents, workOrders, nextInc: inc, nextWo: wo }
+}
+
+export function createSeedState(now) {
+  const { assets, sensors } = buildNetwork()
+  const asset = (id) => assets.find((a) => a.id === id)
+  const sensorOf = (assetId, type) => sensors.find((s) => s.assetId === assetId && s.type === type)
+
+  // Problems already developing in the network
+  asset('MH-202').scenario = { kind: 'blockage', rate: 1.5, startedAt: now - 16 * DAY, sim: null }
+  asset('MH-103').scenario = { kind: 'blockage', rate: 1.3, startedAt: now - 11 * DAY, sim: null }
+  asset('MH-305').scenario = { kind: 'leak', rate: 1, startedAt: now - 10 * DAY, sim: null }
+  asset('PS-4').scenario = { kind: 'pressure_drop', rate: 1, startedAt: now - 6 * DAY, sim: null }
+
+  // Sensor faults
+  sensorOf('MH-105', 'level').fault = { kind: 'frozen', since: now - 3 * DAY }
+  sensorOf('MH-402', 'level').fault = { kind: 'offline', since: now - 5 * HOUR }
+  sensorOf('MH-204', 'level').fault = { kind: 'impossible', since: now - DAY }
+  sensorOf('MH-301', 'flow').fault = { kind: 'no_signal', since: now - 8 * HOUR }
+  sensorOf('MH-401', 'level').battery = 12
+
+  const history = buildHistory(now, assets)
+
+  const reports = [
+    { id: 'RPT-2001', incidentId: 'INC-1103', type: 'Sewage on the street', area: 'Soshanguve', address: 'Block F, next to the park', name: 'Thabo M.', phone: '072 *** 4418', ago: 2.2 * HOUR, desc: 'Sewage coming out of the manhole and running into the street. Kids play in this park.' },
+    { id: 'RPT-2002', incidentId: 'INC-1103', type: 'Overflowing manhole', area: 'Soshanguve', address: 'Block F park', name: '', phone: '', ago: 1.6 * HOUR, desc: 'Manhole overflowing.' },
+    { id: 'RPT-2003', incidentId: 'INC-1103', type: 'Sewage on the street', area: 'Soshanguve', address: 'Corner of the park, Block F', name: 'Nomsa D.', phone: '083 *** 2290', ago: 40 * MINUTE, desc: 'Still running. The smell is very bad.' },
+    { id: 'RPT-2004', incidentId: 'INC-1106', type: 'Bad smell', area: 'Winterveld', address: 'Winterveld market', name: 'Anonymous', phone: '', ago: 20 * HOUR, desc: 'Bad smell near the market stalls for three days.' },
+  ].map((r) => {
+    const a = r.incidentId === 'INC-1103' ? asset('MH-105') : asset('MH-404')
+    return {
+      id: r.id,
+      incidentId: r.incidentId,
+      type: r.type,
+      area: r.area,
+      address: r.address,
+      lat: a.lat + 0.0003,
+      lng: a.lng - 0.0002,
+      assetId: a.id,
+      photo: null,
+      description: r.desc,
+      name: r.name,
+      phone: r.phone || null,
+      consent: !!r.phone,
+      createdAt: iso(now - r.ago),
+      rating: null,
+    }
+  })
+
+  const settings = structuredClone(DEFAULT_SETTINGS)
+  const base = { version: STATE_VERSION, settings, assets, sensors, users: structuredClone(USERS), crews: structuredClone(CREWS) }
+  const analysis = analyzeNetwork({ ...base }, now)
+  const snap = (assetId, fallback) => makePriority(analysis.assets[assetId]?.problem ? analysis.assets[assetId].likelihood : fallback, asset(assetId).criticality)
+  const problemOf = (assetId) => analysis.assets[assetId].problem
+
+  const sensorIncident = (id, assetId, type, status, agoH, extra = {}) => {
+    const a = asset(assetId)
+    const p = problemOf(assetId)
+    const reported = now - agoH * HOUR
+    const priority = snap(assetId, 60)
+    return {
+      id,
+      source: 'sensor',
+      type,
+      title: `${type} at ${a.landmark}`,
+      description: p ? `${p.label}. ${p.where}. ${p.summary}.` : 'Detected by sensors.',
+      assetId,
+      area: a.area,
+      lat: a.lat,
+      lng: a.lng,
+      status,
+      priority,
+      prediction: p ? { daysToFailure: p.daysToFailure, confidence: p.confidence, evidence: p.evidence } : null,
+      reportIds: [],
+      crewId: null,
+      workOrderId: null,
+      reportedAt: iso(reported),
+      assignedAt: null,
+      resolvedAt: null,
+      dueAt: dueAt(priority.level, settings, reported),
+      resolutionNote: null,
+      escalated: false,
+      timeline: [{ at: iso(reported), text: `Detected automatically by sensors on ${assetId}` }],
+      comments: [],
+      ...extra,
+    }
   }
 
-  // Match the first four rows of the design.
-  Object.assign(list[0], { area: 'Soshanguve', status: 'Online', battery: 95, lastReadingMin: 8 })
-  Object.assign(list[1], { area: 'Mabopane', type: 'flow', status: 'Warning', battery: 60, lastReadingMin: 7 })
-  Object.assign(list[2], { area: 'Ga-Rankuwa', type: 'level', status: 'Alert', battery: 45, lastReadingMin: 5 })
-  Object.assign(list[3], { area: 'Soshanguve', status: 'Online', battery: 82, lastReadingMin: 2 })
+  const open = [
+    sensorIncident('INC-1101', 'MH-202', 'Blockage', 'Pending', 26, {
+      crewId: 'C-B',
+      workOrderId: 'WO-3101',
+      assignedAt: iso(now - 24 * HOUR),
+    }),
+    sensorIncident('INC-1102', 'MH-103', 'Blockage', 'Unattended', 3),
+    sensorIncident('INC-1104', 'MH-305', 'Pipe leak', 'Unattended', 7),
+    sensorIncident('INC-1105', 'PS-4', 'Rising main leak', 'Pending', 20, {
+      crewId: 'C-D',
+      workOrderId: 'WO-3102',
+      assignedAt: iso(now - 18 * HOUR),
+    }),
+  ]
+  open[0].timeline.push({ at: iso(now - 24 * HOUR), text: 'Assigned to Crew B by Johan van Wyk' })
+  open[3].timeline.push({ at: iso(now - 18 * HOUR), text: 'Assigned to Crew D by Johan van Wyk' })
+  open[0].comments.push({ at: iso(now - 23 * HOUR), user: 'Johan van Wyk', text: 'Clinic is open until 18:00. Please work outside clinic hours if possible.' })
 
-  return list
-}
+  const mh105 = asset('MH-105')
+  const residentPriority = makePriority(100, mh105.criticality)
+  open.push({
+    id: 'INC-1103',
+    source: 'resident',
+    type: 'Sewage on the street',
+    title: `Sewage on the street at ${mh105.landmark}`,
+    description: 'Sewage coming out of the manhole and running into the street. Note: the level sensor at MH-105 has been stuck for 3 days and did not catch this.',
+    assetId: 'MH-105',
+    area: 'Soshanguve',
+    lat: mh105.lat,
+    lng: mh105.lng,
+    status: 'Unattended',
+    priority: residentPriority,
+    prediction: null,
+    reportIds: ['RPT-2001', 'RPT-2002', 'RPT-2003'],
+    crewId: null,
+    workOrderId: null,
+    reportedAt: reports[0].createdAt,
+    assignedAt: null,
+    resolvedAt: null,
+    dueAt: dueAt(residentPriority.level, settings, now - 2.2 * HOUR),
+    resolutionNote: null,
+    escalated: false,
+    timeline: [
+      { at: reports[0].createdAt, text: 'Reported by resident (Thabo M.)' },
+      { at: reports[1].createdAt, text: 'Another resident reported this (2 reports)' },
+      { at: reports[2].createdAt, text: 'Another resident reported this (3 reports)' },
+    ],
+    comments: [],
+  })
 
-export const SENSORS = makeSensors()
+  const mh404 = asset('MH-404')
+  const smellPriority = makePriority(55, mh404.criticality)
+  open.push({
+    id: 'INC-1106',
+    source: 'resident',
+    type: 'Bad smell',
+    title: `Bad smell at ${mh404.landmark}`,
+    description: 'Bad smell near the market stalls for three days.',
+    assetId: 'MH-404',
+    area: 'Winterveld',
+    lat: mh404.lat,
+    lng: mh404.lng,
+    status: 'Pending',
+    priority: smellPriority,
+    prediction: null,
+    reportIds: ['RPT-2004'],
+    crewId: 'C-D',
+    workOrderId: 'WO-3103',
+    reportedAt: reports[3].createdAt,
+    assignedAt: iso(now - 16 * HOUR),
+    resolvedAt: null,
+    dueAt: dueAt(smellPriority.level, settings, now - 20 * HOUR),
+    resolutionNote: null,
+    escalated: false,
+    timeline: [
+      { at: reports[3].createdAt, text: 'Reported by resident' },
+      { at: iso(now - 16 * HOUR), text: 'Assigned to Crew D by Johan van Wyk' },
+    ],
+    comments: [],
+  })
 
-function areaCoords(name) {
-  const a = AREAS.find((x) => x.name === name) ?? AREAS[0]
-  return { lat: a.lat, lng: a.lng }
-}
+  const tomorrow = new Date(now + DAY)
+  tomorrow.setHours(8, 0, 0, 0)
+  const today9 = new Date(now)
+  today9.setHours(9, 0, 0, 0)
 
-function hoursAgo(h) {
-  return new Date(Date.now() - h * 3600 * 1000).toISOString()
-}
-
-// Builds one incident with a realistic timeline.
-function incident({ id, source, sensorId, reading, reporter, type, area, address, severity, status, reported, assignedAfter, crew, resolvedAfter, note, description }) {
-  const timeline = [
+  const openWOs = [
     {
-      at: hoursAgo(reported),
-      text: source === 'sensor' ? `Detected automatically by sensor ${sensorId}` : `Reported by resident${reporter?.name ? ` (${reporter.name})` : ''}`,
+      id: 'WO-3101', incidentId: 'INC-1101', assetId: 'MH-202', sensorId: null, kind: 'Proactive',
+      title: open[0].title, crewId: 'C-B', scheduledFor: iso(today9.getTime()), status: 'In progress',
+      createdAt: iso(now - 24 * HOUR), createdBy: 'Johan van Wyk', startedAt: iso(now - 2 * HOUR), completedAt: null,
+      beforePhoto: null, afterPhoto: null, notes: '',
+    },
+    {
+      id: 'WO-3102', incidentId: 'INC-1105', assetId: 'PS-4', sensorId: null, kind: 'Proactive',
+      title: open[3].title, crewId: 'C-D', scheduledFor: iso(tomorrow.getTime()), status: 'Scheduled',
+      createdAt: iso(now - 18 * HOUR), createdBy: 'Johan van Wyk', startedAt: null, completedAt: null,
+      beforePhoto: null, afterPhoto: null, notes: '',
+    },
+    {
+      id: 'WO-3103', incidentId: 'INC-1106', assetId: 'MH-404', sensorId: null, kind: 'Reactive',
+      title: open[5].title, crewId: 'C-D', scheduledFor: iso(today9.getTime()), status: 'Scheduled',
+      createdAt: iso(now - 16 * HOUR), createdBy: 'Johan van Wyk', startedAt: null, completedAt: null,
+      beforePhoto: null, afterPhoto: null, notes: '',
+    },
+    {
+      id: 'WO-3104', incidentId: null, assetId: 'MH-101', sensorId: null, kind: 'Planned',
+      title: 'Routine jetting and inspection, Block L line', crewId: 'C-A', scheduledFor: iso(tomorrow.getTime() + 2 * DAY), status: 'Scheduled',
+      createdAt: iso(now - 3 * DAY), createdBy: 'Johan van Wyk', startedAt: null, completedAt: null,
+      beforePhoto: null, afterPhoto: null, notes: '',
     },
   ]
-  if (crew) timeline.push({ at: hoursAgo(reported - assignedAfter), text: `Assigned to ${crew}` })
-  if (status === 'Resolved') timeline.push({ at: hoursAgo(reported - resolvedAfter), text: `Resolved: ${note}` })
 
   return {
-    id,
-    source,
-    sensorId: sensorId ?? null,
-    reading: reading ?? null,
-    reporter: reporter ?? null,
-    type,
-    area,
-    address,
-    ...areaCoords(area),
-    severity,
-    status,
-    reportedAt: hoursAgo(reported),
-    assignedCrew: crew ?? null,
-    resolvedAt: status === 'Resolved' ? hoursAgo(reported - resolvedAfter) : null,
-    resolutionNote: status === 'Resolved' ? note : null,
-    description,
-    photo: null,
-    timeline,
+    ...base,
+    incidents: [...open, ...history.incidents],
+    reports,
+    workOrders: [...openWOs, ...history.workOrders],
+    notifications: [],
+    sms: reports
+      .filter((r) => r.phone)
+      .map((r, i) => ({ id: `M-seed-${i}`, at: r.createdAt, to: `${r.name} (${r.phone})`, audience: 'Resident', text: `City of Tshwane: we received your report ${r.id}. Track it on our website.` })),
+    audit: [{ id: 'A-seed', at: iso(now - 24 * HOUR), user: 'Johan van Wyk', action: 'Assigned INC-1101 to Crew B' }],
+    knownFaults: [],
   }
-}
-
-export function seedIncidents() {
-  return [
-    // Unattended
-    incident({ id: 'INC-1015', source: 'sensor', sensorId: 'S-003', reading: { type: 'level', value: 134 }, type: 'Overflowing manhole', area: 'Ga-Rankuwa', address: 'Manhole next to Zone 16 taxi rank', severity: 'High', status: 'Unattended', reported: 0.6, description: 'Water level rose 40 cm in 3 hours after rain. Likely blockage downstream.' }),
-    incident({ id: 'INC-1014', source: 'citizen', reporter: { name: 'Thabo M.', phone: '072 *** 4418' }, type: 'Sewage on the street', area: 'Soshanguve', address: 'Block L, corner by the tuck shop', severity: 'High', status: 'Unattended', reported: 2, description: 'Sewage running down the street since this morning. Kids walk past here to school.' }),
-    incident({ id: 'INC-1013', source: 'sensor', sensorId: 'S-002', reading: { type: 'flow', value: 13 }, type: 'Leaking pipe', area: 'Mabopane', address: 'Main line, Unit C', severity: 'Medium', status: 'Unattended', reported: 5, description: 'Flow loss between the two meters on this section has been climbing for 9 days.' }),
-
-    // Pending
-    incident({ id: 'INC-1012', source: 'citizen', reporter: { name: 'Anonymous' }, type: 'Blocked drain', area: 'Winterveld', address: 'Near Winterveld community hall', severity: 'Medium', status: 'Pending', reported: 9, assignedAfter: 1, crew: 'Crew D', description: 'Drain full and backing up. Bad smell getting worse.' }),
-    incident({ id: 'INC-1011', source: 'sensor', sensorId: 'S-118', reading: { type: 'pressure', value: 2.4 }, type: 'Leaking pipe', area: 'Soshanguve', address: 'Rising main from Block X pump station', severity: 'High', status: 'Pending', reported: 20, assignedAfter: 0.5, crew: 'Crew A', description: 'Pressure dropped from 4.2 to 2.4 bar over two days. Possible burst.' }),
-    incident({ id: 'INC-1010', source: 'citizen', reporter: { name: 'Lerato K.', phone: '083 *** 2290' }, type: 'Overflowing manhole', area: 'Mabopane', address: 'Block B, opposite the clinic', severity: 'High', status: 'Pending', reported: 30, assignedAfter: 2, crew: 'Crew B', description: 'Manhole overflowing onto the road outside the clinic.' }),
-    incident({ id: 'INC-1009', source: 'sensor', sensorId: 'S-207', reading: { type: 'pump', value: 51 }, type: 'Pump fault', area: 'Ga-Rankuwa', address: 'Ga-Rankuwa pump station 2', severity: 'Medium', status: 'Pending', reported: 44, assignedAfter: 4, crew: 'Crew C', description: 'Pump current well above normal. Possible blockage at the intake.' }),
-
-    // Resolved
-    incident({ id: 'INC-1008', source: 'sensor', sensorId: 'S-045', reading: { type: 'level', value: 126 }, type: 'Overflowing manhole', area: 'Soshanguve', address: 'Block H, Mahlangu St', severity: 'High', status: 'Resolved', reported: 70, assignedAfter: 1, crew: 'Crew A', resolvedAfter: 6, note: 'Cleared rags and fat blockage 40 m downstream.', description: 'Level rising fast. Caught before overflow.' }),
-    incident({ id: 'INC-1007', source: 'citizen', reporter: { name: 'Sipho N.' }, type: 'Leaking pipe', area: 'Winterveld', address: 'Stand 1022, main road', severity: 'Medium', status: 'Resolved', reported: 96, assignedAfter: 3, crew: 'Crew D', resolvedAfter: 20, note: 'Replaced cracked joint.', description: 'Wet patch and smell along the verge.' }),
-    incident({ id: 'INC-1006', source: 'sensor', sensorId: 'S-163', reading: { type: 'flow', value: 11 }, type: 'Leaking pipe', area: 'Mabopane', address: 'Unit U feeder line', severity: 'Medium', status: 'Resolved', reported: 150, assignedAfter: 5, crew: 'Crew B', resolvedAfter: 30, note: 'Sealed leaking section.', description: 'Slow flow loss detected before any surface signs.' }),
-    incident({ id: 'INC-1005', source: 'citizen', reporter: { name: 'Anonymous' }, type: 'Bad smell', area: 'Soshanguve', address: 'Block F park', severity: 'Low', status: 'Resolved', reported: 200, assignedAfter: 12, crew: 'Crew A', resolvedAfter: 48, note: 'Vent pipe cover replaced.', description: 'Strong smell near the park most evenings.' }),
-    incident({ id: 'INC-1004', source: 'sensor', sensorId: 'S-088', reading: { type: 'pump', value: 48 }, type: 'Pump fault', area: 'Ga-Rankuwa', address: 'Ga-Rankuwa pump station 1', severity: 'Medium', status: 'Resolved', reported: 260, assignedAfter: 2, crew: 'Crew C', resolvedAfter: 8, note: 'Worn bearing replaced before pump seized.', description: 'Pump current creeping up for two weeks.' }),
-    incident({ id: 'INC-1003', source: 'citizen', reporter: { name: 'Nomsa D.' }, type: 'Overflowing manhole', area: 'Mabopane', address: 'Block E, near the primary school', severity: 'High', status: 'Resolved', reported: 330, assignedAfter: 1, crew: 'Crew B', resolvedAfter: 5, note: 'Blockage cleared, area disinfected.', description: 'Manhole overflowing near the school gate.' }),
-    incident({ id: 'INC-1002', source: 'sensor', sensorId: 'S-231', reading: { type: 'pressure', value: 2.8 }, type: 'Leaking pipe', area: 'Winterveld', address: 'Rising main, Winterveld pump station', severity: 'High', status: 'Resolved', reported: 400, assignedAfter: 1, crew: 'Crew D', resolvedAfter: 16, note: 'Burst section replaced.', description: 'Pressure drop detected overnight.' }),
-    incident({ id: 'INC-1001', source: 'citizen', reporter: { name: 'Anonymous' }, type: 'Blocked drain', area: 'Ga-Rankuwa', address: 'Zone 5, next to the church', severity: 'Low', status: 'Resolved', reported: 480, assignedAfter: 10, crew: 'Crew C', resolvedAfter: 30, note: 'Drain jetted and cleared.', description: 'Slow-draining, water pooling after rain.' }),
-  ]
 }
