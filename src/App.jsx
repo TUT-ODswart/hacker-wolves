@@ -1,40 +1,40 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import Login from './pages/Login.jsx'
-import CitizenLayout from './layouts/CitizenLayout.jsx'
-import CityLayout from './layouts/CityLayout.jsx'
-import ReportProblem from './pages/citizen/ReportProblem.jsx'
-import MyReports from './pages/citizen/MyReports.jsx'
-import Dashboard from './pages/city/Dashboard.jsx'
-import Assets from './pages/city/Assets.jsx'
-import AssetDetail from './pages/city/AssetDetail.jsx'
-import Alerts from './pages/city/Alerts.jsx'
-import Priorities from './pages/city/Priorities.jsx'
-import Maintenance from './pages/city/Maintenance.jsx'
-import CitizenReports from './pages/city/CitizenReports.jsx'
-import SensorHealth from './pages/city/SensorHealth.jsx'
-import Analytics from './pages/city/Analytics.jsx'
+import PublicLayout from './layouts/PublicLayout.jsx'
+import AdminLayout from './layouts/AdminLayout.jsx'
+import RequireAdmin from './components/RequireAdmin.jsx'
+import Home from './pages/public/Home.jsx'
+import Report from './pages/public/Report.jsx'
+import Track from './pages/public/Track.jsx'
+import Faq from './pages/public/Faq.jsx'
+import About from './pages/public/About.jsx'
+import Dashboard from './pages/admin/Dashboard.jsx'
+import Sensors from './pages/admin/Sensors.jsx'
+import Incidents from './pages/admin/Incidents.jsx'
+import IncidentDetail from './pages/admin/IncidentDetail.jsx'
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Login />} />
-
-      <Route path="/citizen" element={<CitizenLayout />}>
-        <Route index element={<Navigate to="report" replace />} />
-        <Route path="report" element={<ReportProblem />} />
-        <Route path="my-reports" element={<MyReports />} />
+      <Route element={<PublicLayout />}>
+        <Route index element={<Home />} />
+        <Route path="report" element={<Report />} />
+        <Route path="track" element={<Track />} />
+        <Route path="faq" element={<Faq />} />
+        <Route path="about" element={<About />} />
       </Route>
 
-      <Route path="/city" element={<CityLayout />}>
+      <Route
+        path="admin"
+        element={
+          <RequireAdmin>
+            <AdminLayout />
+          </RequireAdmin>
+        }
+      >
         <Route index element={<Dashboard />} />
-        <Route path="assets" element={<Assets />} />
-        <Route path="assets/:id" element={<AssetDetail />} />
-        <Route path="alerts" element={<Alerts />} />
-        <Route path="priorities" element={<Priorities />} />
-        <Route path="maintenance" element={<Maintenance />} />
-        <Route path="reports" element={<CitizenReports />} />
-        <Route path="sensors" element={<SensorHealth />} />
-        <Route path="analytics" element={<Analytics />} />
+        <Route path="sensors" element={<Sensors />} />
+        <Route path="incidents" element={<Incidents />} />
+        <Route path="incidents/:id" element={<IncidentDetail />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
