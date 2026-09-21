@@ -7,23 +7,17 @@ import Report from './pages/public/Report.jsx'
 import Track from './pages/public/Track.jsx'
 import Faq from './pages/public/Faq.jsx'
 import About from './pages/public/About.jsx'
-import Dashboard from './pages/staff/Dashboard.jsx'
-import MapPage from './pages/staff/MapPage.jsx'
+import AdminHome from './pages/staff/AdminHome.jsx'
 import Incidents from './pages/staff/Incidents.jsx'
 import IncidentDetail from './pages/staff/IncidentDetail.jsx'
-import WorkOrders from './pages/staff/WorkOrders.jsx'
-import WorkOrderDetail from './pages/staff/WorkOrderDetail.jsx'
 import MyJobs from './pages/staff/MyJobs.jsx'
+import JobDetail from './pages/staff/JobDetail.jsx'
 import Sensors from './pages/staff/Sensors.jsx'
 import SensorDetail from './pages/staff/SensorDetail.jsx'
-import Assets from './pages/staff/Assets.jsx'
-import AssetDetail from './pages/staff/AssetDetail.jsx'
-import Analytics from './pages/staff/Analytics.jsx'
 import Simulation from './pages/staff/Simulation.jsx'
-import Settings from './pages/staff/Settings.jsx'
+import CrewsUsers from './pages/staff/CrewsUsers.jsx'
 import Profile from './pages/staff/Profile.jsx'
 
-const OFFICE = ['admin', 'supervisor', 'manager']
 const guard = (roles, el) => <RequireRole roles={roles}>{el}</RequireRole>
 
 export default function App() {
@@ -38,20 +32,15 @@ export default function App() {
       </Route>
 
       <Route path="admin" element={guard(null, <StaffLayout />)}>
-        <Route index element={guard(OFFICE, <Dashboard />)} />
+        <Route index element={guard(['admin'], <AdminHome />)} />
         <Route path="jobs" element={guard(['technician'], <MyJobs />)} />
-        <Route path="map" element={<MapPage />} />
-        <Route path="incidents" element={guard(OFFICE, <Incidents />)} />
-        <Route path="incidents/:id" element={guard(OFFICE, <IncidentDetail />)} />
-        <Route path="work-orders" element={guard(OFFICE, <WorkOrders />)} />
-        <Route path="work-orders/:id" element={<WorkOrderDetail />} />
-        <Route path="sensors" element={guard(OFFICE, <Sensors />)} />
-        <Route path="sensors/:id" element={guard(OFFICE, <SensorDetail />)} />
-        <Route path="assets" element={guard(OFFICE, <Assets />)} />
-        <Route path="assets/:id" element={guard(OFFICE, <AssetDetail />)} />
-        <Route path="analytics" element={guard(OFFICE, <Analytics />)} />
-        <Route path="simulation" element={guard(['admin', 'supervisor'], <Simulation />)} />
-        <Route path="settings" element={guard(['admin'], <Settings />)} />
+        <Route path="jobs/:id" element={guard(['technician', 'admin'], <JobDetail />)} />
+        <Route path="incidents" element={guard(['admin'], <Incidents />)} />
+        <Route path="incidents/:id" element={guard(['admin'], <IncidentDetail />)} />
+        <Route path="sensors" element={guard(['admin'], <Sensors />)} />
+        <Route path="sensors/:id" element={guard(['admin'], <SensorDetail />)} />
+        <Route path="crews" element={guard(['admin'], <CrewsUsers />)} />
+        <Route path="simulation" element={guard(['admin'], <Simulation />)} />
         <Route path="profile" element={<Profile />} />
       </Route>
 

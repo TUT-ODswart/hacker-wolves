@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Polyline, Popup } from 'react-leaflet'
 import { useStore } from '../data/StoreContext.js'
-import { Badge } from './ui.jsx'
+import { Badge, StatusBadge } from './ui.jsx'
 
 const COLORS = { Good: '#16a34a', Warning: '#ea580c', Critical: '#dc2626', Unknown: '#64748b' }
 
@@ -68,7 +68,9 @@ export default function NetworkMap({ className = 'h-[28rem]', focus, showToggles
                     <p>{a.landmark}, {a.area}</p>
                     <p><Badge>{x.condition}</Badge></p>
                     {x.problem && <p>{x.problem.label}: {x.problem.summary}</p>}
-                    <Link to={`/admin/assets/${a.id}`} className="font-semibold text-brand underline">View details</Link>
+                    {state.sensors.filter((s) => s.assetId === a.id).slice(0, 1).map((s) => (
+                      <Link key={s.id} to={`/admin/sensors/${s.id}`} className="font-semibold text-brand underline">View sensors</Link>
+                    ))}
                   </div>
                 </Popup>
               </CircleMarker>
@@ -85,9 +87,9 @@ export default function NetworkMap({ className = 'h-[28rem]', focus, showToggles
               >
                 <Popup>
                   <div className="space-y-1 text-sm">
-                    <p className="font-bold">{i.id}</p>
-                    <p>{i.title}</p>
-                    <p><Badge>{i.status}</Badge></p>
+                    <p className="font-bold">{i.title}</p>
+                    <p className="text-xs text-slate-500">{i.id}</p>
+                    <p><StatusBadge status={i.status} /></p>
                     <Link to={`/admin/incidents/${i.id}`} className="font-semibold text-brand underline">Open incident</Link>
                   </div>
                 </Popup>

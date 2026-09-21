@@ -5,7 +5,7 @@ import { analyzeNetwork, incidentPriority, RESIDENT_LIKELIHOOD } from './model.j
 import { AREAS, createSeedState } from './seed.js'
 import { audit, crewMembers, dueAt, iso, makePriority, nextId, notify, sms, updateIn } from './helpers.js'
 
-const MANAGERS = ['admin', 'supervisor']
+const ADMIN = ['admin']
 const crewName = (s, id) => s.crews.find((c) => c.id === id)?.name ?? id
 
 function smsResidents(s, incident, text, now) {
@@ -21,6 +21,17 @@ function notifyCrew(s, crewId, title, body, link, now) {
   s = notify(s, { userIds: members.map((m) => m.id), title, body, link }, now)
   for (const m of members) s = sms(s, { to: `${m.name} (${m.phone})`, audience: 'Crew', text: `${title}. ${body}` }, now)
   return s
+}
+
+function blankJobFields() {
+  return {
+    crewId: null,
+    scheduledFor: null,
+    startedAt: null,
+    beforePhoto: null,
+    afterPhoto: null,
+    notes: '',
+  }
 }
 
 // ---------- residents ----------
@@ -76,7 +87,7 @@ export function submitReport(s, p, { now }) {
         timeline: [...i.timeline, { at: iso(now), text: `Another resident reported this (${count} reports)` }],
       })),
     }
-    s = notify(s, { roles: MANAGERS, title: `${count} residents now reporting ${inc.id}`, body: inc.title, link: `/admin/incidents/${inc.id}` }, now)
+    s = notify(s, { roles: ADMIN, title: `${count} residents now reporting ${inc.id}`, body: inc.title, link: `/admin/incidents/${inc.id}` }, now)
   } else {
     const impact = asset?.criticality ?? 3
     const priority = makePriority(RESIDENT_LIKELIHOOD[p.type] ?? 60, impact)
@@ -88,15 +99,16 @@ export function submitReport(s, p, { now }) {
       title: `${p.type} at ${place}`,
       description: report.description,
       assetId: asset?.id ?? null,
+      sensorId: null,
       area: p.area,
       lat,
       lng,
       status: 'Unattended',
+      kind: 'Reactive',
       priority,
       prediction: null,
       reportIds: [report.id],
-      crewId: null,
-      workOrderId: null,
+      ...blankJobFields(),
       reportedAt: iso(now),
       assignedAt: null,
       resolvedAt: null,
@@ -107,8 +119,7 @@ export function submitReport(s, p, { now }) {
       comments: [],
     }
     s = { ...s, incidents: [incident, ...s.incidents] }
-    const roles = priority.level === 'High' ? [...MANAGERS, 'manager'] : MANAGERS
-    s = notify(s, { roles, title: `New resident report: ${p.type}`, body: `${place}, ${p.area}. Priority ${priority.level}.`, link: `/admin/incidents/${incident.id}`, severity: priority.level === 'High' ? 'high' : 'info' }, now)
+    s = notify(s, { roles: ADMIN, title: `New resident report: ${p.type}`, body: `${place}, ${p.area}.`, link: `/admin/incidents/${incident.id}`, severity: priority.level === 'High' ? 'high' : 'info' }, now)
   }
 
   if (report.phone && report.consent) {
@@ -121,42 +132,26 @@ export function rateReport(s, { reportId, stars, comment }) {
   return { ...s, reports: updateIn(s.reports, reportId, { rating: { stars, comment } }) }
 }
 
-// ---------- incidents ----------
-export function assignIncident(s, { incidentId, crewId, scheduledFor, woId }, { now, user }) {
+// ---------- problems (formerly incidents + work orders) ----------
+export function assignIncident(s, { incidentId, crewId, scheduledFor }, { now, user }) {
   const inc = s.incidents.find((i) => i.id === incidentId)
-  const proactive = inc.source === 'sensor'
-  const wo = {
-    id: woId,
-    incidentId,
-    assetId: inc.assetId,
-    sensorId: null,
-    kind: proactive ? 'Proactive' : 'Reactive',
-    title: inc.title,
-    crewId,
-    scheduledFor: iso(scheduledFor),
-    status: 'Scheduled',
-    createdAt: iso(now),
-    createdBy: user.name,
-    startedAt: null,
-    completedAt: null,
-    beforePhoto: null,
-    afterPhoto: null,
-    notes: '',
-  }
   s = {
     ...s,
-    workOrders: [wo, ...s.workOrders],
     incidents: updateIn(s.incidents, incidentId, (i) => ({
       status: 'Pending',
       crewId,
-      workOrderId: woId,
+      scheduledFor: iso(scheduledFor),
       assignedAt: iso(now),
-      timeline: [...i.timeline, { at: iso(now), text: `Assigned to ${crewName(s, crewId)} by ${user.name}` }],
+      startedAt: null,
+      beforePhoto: null,
+      afterPhoto: null,
+      notes: '',
+      timeline: [...i.timeline, { at: iso(now), text: `Crew sent: ${crewName(s, crewId)} by ${user.name}` }],
     })),
   }
-  s = notifyCrew(s, crewId, `New job ${woId}`, inc.title, `/admin/work-orders/${woId}`, now)
+  s = notifyCrew(s, crewId, 'New job', inc.title, `/admin/jobs/${incidentId}`, now)
   s = smsResidents(s, inc, (r) => `City of Tshwane: a crew has been assigned to your report ${r.id}.`, now)
-  return audit(s, user, `Assigned ${incidentId} to ${crewName(s, crewId)}`, now)
+  return audit(s, user, `Sent ${crewName(s, crewId)} to ${incidentId}`, now)
 }
 
 export function addComment(s, { incidentId, text }, { now, user }) {
@@ -185,75 +180,90 @@ export function closeIncident(s, { incidentId, reason }, { now, user }) {
   return audit(s, user, `Closed ${incidentId} without a repair`, now)
 }
 
-// ---------- work orders ----------
-export function createWorkOrder(s, { woId, assetId, sensorId, kind, title, crewId, scheduledFor }, { now, user }) {
-  const wo = {
-    id: woId,
-    incidentId: null,
-    assetId,
-    sensorId: sensorId ?? null,
-    kind,
+/** Admin sends a crew to fix a broken sensor — creates a Sensor repair problem. */
+export function createSensorRepair(s, { incidentId, assetId, sensorId, title, crewId, scheduledFor }, { now, user }) {
+  const asset = s.assets.find((a) => a.id === assetId)
+  const incident = {
+    id: incidentId,
+    source: 'sensor',
+    type: 'Sensor repair',
     title,
+    description: title,
+    assetId,
+    sensorId,
+    area: asset.area,
+    lat: asset.lat,
+    lng: asset.lng,
+    status: 'Pending',
+    kind: 'Sensor repair',
+    priority: makePriority(40, asset.criticality),
+    prediction: null,
+    reportIds: [],
     crewId,
     scheduledFor: iso(scheduledFor),
-    status: 'Scheduled',
-    createdAt: iso(now),
-    createdBy: user.name,
     startedAt: null,
-    completedAt: null,
     beforePhoto: null,
     afterPhoto: null,
     notes: '',
+    reportedAt: iso(now),
+    assignedAt: iso(now),
+    resolvedAt: null,
+    dueAt: dueAt('Medium', s.settings, now),
+    resolutionNote: null,
+    escalated: false,
+    timeline: [
+      { at: iso(now), text: `Sensor repair created by ${user.name}` },
+      { at: iso(now), text: `Crew sent: ${crewName(s, crewId)} by ${user.name}` },
+    ],
+    comments: [],
   }
-  s = { ...s, workOrders: [wo, ...s.workOrders] }
-  s = notifyCrew(s, crewId, `New job ${woId}`, title, `/admin/work-orders/${woId}`, now)
-  return audit(s, user, `Created ${kind.toLowerCase()} job ${woId}`, now)
+  s = { ...s, incidents: [incident, ...s.incidents] }
+  s = notifyCrew(s, crewId, 'New job', title, `/admin/jobs/${incidentId}`, now)
+  return audit(s, user, `Sent crew to fix sensor ${sensorId}`, now)
 }
 
-export function startWorkOrder(s, { woId, beforePhoto }, { now, user }) {
-  const wo = s.workOrders.find((w) => w.id === woId)
-  s = { ...s, workOrders: updateIn(s.workOrders, woId, { status: 'In progress', startedAt: iso(now), beforePhoto: beforePhoto ?? null }) }
-  if (wo.incidentId) {
-    s = { ...s, incidents: updateIn(s.incidents, wo.incidentId, (i) => ({ timeline: [...i.timeline, { at: iso(now), text: `${user.name} started work on site` }] })) }
+export function startJob(s, { incidentId, beforePhoto }, { now, user }) {
+  s = {
+    ...s,
+    incidents: updateIn(s.incidents, incidentId, (i) => ({
+      startedAt: iso(now),
+      beforePhoto: beforePhoto ?? null,
+      timeline: [...i.timeline, { at: iso(now), text: `${user.name} started work on site` }],
+    })),
   }
-  return audit(s, user, `Started ${woId}`, now)
+  return audit(s, user, `Started job ${incidentId}`, now)
 }
 
-export function completeWorkOrder(s, { woId, afterPhoto, notes }, { now, user }) {
-  const wo = s.workOrders.find((w) => w.id === woId)
+export function completeJob(s, { incidentId, afterPhoto, notes }, { now, user }) {
+  const inc = s.incidents.find((i) => i.id === incidentId)
   const note = notes?.trim() || 'Repair completed.'
   s = {
     ...s,
-    workOrders: updateIn(s.workOrders, woId, {
-      status: 'Completed',
-      completedAt: iso(now),
+    incidents: updateIn(s.incidents, incidentId, {
       afterPhoto: afterPhoto ?? null,
       notes: note,
     }),
   }
 
   // The repair fixes the problem and the sensors go back to normal.
-  if (wo.kind !== 'Sensor repair') s = { ...s, assets: updateIn(s.assets, wo.assetId, { scenario: null }) }
-  if (wo.sensorId) s = { ...s, sensors: updateIn(s.sensors, wo.sensorId, { fault: null, battery: 100 }) }
+  if (inc.kind !== 'Sensor repair' && inc.assetId) s = { ...s, assets: updateIn(s.assets, inc.assetId, { scenario: null }) }
+  if (inc.sensorId) s = { ...s, sensors: updateIn(s.sensors, inc.sensorId, { fault: null, battery: 100 }) }
 
-  if (wo.incidentId) {
-    const analysis = analyzeNetwork(s, now)
-    const inc = s.incidents.find((i) => i.id === wo.incidentId)
-    const priority = incidentPriority(inc, s, analysis) ?? inc.priority
-    s = {
-      ...s,
-      incidents: updateIn(s.incidents, wo.incidentId, (i) => ({
-        status: 'Resolved',
-        resolvedAt: iso(now),
-        resolutionNote: note,
-        priority: { ...i.priority, ...priority, score: i.priority.score, level: i.priority.level },
-        timeline: [...i.timeline, { at: iso(now), text: `Resolved by ${user.name}: ${note}` }],
-      })),
-    }
-    s = smsResidents(s, inc, (r) => `City of Tshwane: the problem you reported (${r.id}) has been fixed. Thank you for reporting.`, now)
+  const analysis = analyzeNetwork(s, now)
+  const priority = incidentPriority(inc, s, analysis) ?? inc.priority
+  s = {
+    ...s,
+    incidents: updateIn(s.incidents, incidentId, (i) => ({
+      status: 'Resolved',
+      resolvedAt: iso(now),
+      resolutionNote: note,
+      priority: { ...i.priority, ...priority, score: i.priority.score, level: i.priority.level },
+      timeline: [...i.timeline, { at: iso(now), text: `Fixed by ${user.name}: ${note}` }],
+    })),
   }
-  s = notify(s, { roles: MANAGERS, title: `${woId} completed`, body: `${wo.title}. ${note}`, link: `/admin/work-orders/${woId}` }, now)
-  return audit(s, user, `Completed ${woId}`, now)
+  s = smsResidents(s, inc, (r) => `City of Tshwane: the problem you reported (${r.id}) has been fixed. Thank you for reporting.`, now)
+  s = notify(s, { roles: ADMIN, title: `Job fixed: ${inc.title}`, body: note, link: `/admin/incidents/${incidentId}` }, now)
+  return audit(s, user, `Fixed ${incidentId}`, now)
 }
 
 // ---------- settings, users, crews ----------
@@ -292,7 +302,19 @@ export function markAllRead(s, _p, { user }) {
 
 // ---------- simulation (demo tools) ----------
 export function startScenario(s, { assetId, kind, days, durationMs, rate }, { now, user }) {
+  const asset = s.assets.find((a) => a.id === assetId)
   s = { ...s, assets: updateIn(s.assets, assetId, { scenario: { kind, rate, startedAt: now, sim: { startedAt: now, durationMs, days } } }) }
+  s = notify(
+    s,
+    {
+      roles: ADMIN,
+      title: `Simulation started: ${assetId}`,
+      body: `${asset?.landmark ?? assetId}. Monitoring for a predicted ${kind.replace('_', ' ')}.`,
+      link: `/admin/sensors/${s.sensors.find((sensor) => sensor.assetId === assetId)?.id ?? ''}`,
+      severity: 'info',
+    },
+    now,
+  )
   return audit(s, user, `Simulation: started ${kind} at ${assetId}`, now)
 }
 
@@ -314,7 +336,7 @@ export function clearFault(s, { sensorId }, { now, user }) {
 
 export function setRain(s, { on }, { now, user }) {
   s = { ...s, settings: { ...s.settings, rainForecast: on } }
-  if (on) s = notify(s, { roles: [...MANAGERS, 'manager'], title: 'Heavy rain forecast', body: 'Manholes that are already filling up have moved up the priority list.', link: '/admin', severity: 'high' }, now)
+  if (on) s = notify(s, { roles: ADMIN, title: 'Heavy rain forecast', body: 'Manholes that are already filling up have moved up the priority list.', link: '/admin', severity: 'high' }, now)
   return audit(s, user, `Rain forecast ${on ? 'on' : 'off'}`, now)
 }
 

@@ -4,7 +4,7 @@ import { Search, Star } from 'lucide-react'
 import { useStore } from '../../data/StoreContext.js'
 import { formatDateTime } from '../../utils/format.js'
 
-const steps = ['Received', 'Crew assigned', 'Fixed']
+const steps = ['New', 'Crew sent', 'Fixed']
 const stepIndex = { Unattended: 0, Pending: 1, Resolved: 2 }
 
 export default function Track() {
@@ -69,8 +69,8 @@ export default function Track() {
           </ol>
 
           <div className="mt-8 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
-            {incident.status === 'Unattended' && 'Your report has been received and is waiting for a crew.'}
-            {incident.status === 'Pending' && `${crew ?? 'A crew'} has been assigned and is working on it.`}
+            {incident.status === 'Unattended' && 'Your report is new and waiting for a crew.'}
+            {incident.status === 'Pending' && `${crew ?? 'A crew'} has been sent and is working on it.`}
             {incident.status === 'Resolved' && `Fixed on ${formatDateTime(incident.resolvedAt)}. ${incident.resolutionNote ?? ''}`}
           </div>
 

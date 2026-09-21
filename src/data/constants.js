@@ -1,26 +1,44 @@
 export const ROLES = {
   admin: 'Admin',
-  supervisor: 'Supervisor',
-  manager: 'Manager',
   technician: 'Technician',
 }
 
 export const ROLE_HOME = {
   admin: '/admin',
-  supervisor: '/admin',
-  manager: '/admin',
   technician: '/admin/jobs',
 }
 
 const PERMISSIONS = {
-  manageIncidents: ['admin', 'supervisor'],
-  planWork: ['admin', 'supervisor'],
-  simulate: ['admin', 'supervisor'],
+  manageIncidents: ['admin'],
+  planWork: ['admin'],
+  simulate: ['admin'],
   settings: ['admin'],
 }
 
 export function can(user, action) {
   return !!user && PERMISSIONS[action].includes(user.role)
+}
+
+/** Internal status → plain-language label shown to users. */
+export const STATUS_LABELS = {
+  Unattended: 'New',
+  Pending: 'Crew sent',
+  Resolved: 'Fixed',
+}
+
+/** Internal priority → plain-language label. Score stays hidden in the UI. */
+export const PRIORITY_LABELS = {
+  High: 'Urgent',
+  Medium: 'Soon',
+  Low: 'Can wait',
+}
+
+export function statusLabel(status) {
+  return STATUS_LABELS[status] ?? status
+}
+
+export function priorityLabel(level) {
+  return PRIORITY_LABELS[level] ?? level
 }
 
 export const SENSOR_TYPES = {

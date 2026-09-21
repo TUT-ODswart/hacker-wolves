@@ -81,21 +81,17 @@ export default function StoreProvider({ children }) {
     findDuplicate: (form) => A.findDuplicate(state, form),
     rateReport: (p) => run(A.rateReport, p),
 
-    // Incidents and work orders
-    assignIncident(p) {
-      const woId = nextId(state.workOrders, 'WO', 3000)
-      run(A.assignIncident, { ...p, woId })
-      return woId
-    },
+    // Problems (incidents with crew assignment built in)
+    assignIncident: (p) => run(A.assignIncident, p),
     addComment: (p) => run(A.addComment, p),
     closeIncident: (p) => run(A.closeIncident, p),
-    createWorkOrder(p) {
-      const woId = nextId(state.workOrders, 'WO', 3000)
-      run(A.createWorkOrder, { ...p, woId })
-      return woId
+    createSensorRepair(p) {
+      const incidentId = nextId(state.incidents, 'INC', 1000)
+      run(A.createSensorRepair, { ...p, incidentId })
+      return incidentId
     },
-    startWorkOrder: (p) => run(A.startWorkOrder, p),
-    completeWorkOrder: (p) => run(A.completeWorkOrder, p),
+    startJob: (p) => run(A.startJob, p),
+    completeJob: (p) => run(A.completeJob, p),
 
     // Admin
     updateSettings: (p) => run(A.updateSettings, p),

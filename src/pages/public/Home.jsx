@@ -10,8 +10,8 @@ const steps = [
 
 export default function Home() {
   const { state } = useStore()
-  const resolved = state.incidents.filter((i) => i.status === 'Resolved').length
-  const proactive = state.workOrders.filter((w) => w.status === 'Completed' && w.kind === 'Proactive').length
+  const resolved = state.incidents.filter((i) => i.status === 'Resolved' && i.kind !== 'Sensor repair').length
+  const proactive = state.incidents.filter((i) => i.status === 'Resolved' && i.kind === 'Proactive').length
 
   return (
     <>

@@ -27,11 +27,13 @@ export default function Simulation() {
   const [fault, setFault] = useState('offline')
   const [confirmReset, setConfirmReset] = useState(false)
 
+  const sensorIsUsable = (sensor) => sensor && !sensor.fault && sensor.battery >= 20
+
   const upstreamHasFlow = (asset) => {
     let up = state.assets.find((a) => a.downstreamId === asset.id)
     while (up) {
       const id = up.id
-      if (state.sensors.some((s) => s.assetId === id && s.type === 'flow')) return true
+      if (state.sensors.some((s) => s.assetId === id && s.type === 'flow' && sensorIsUsable(s))) return true
       up = state.assets.find((a) => a.downstreamId === id)
     }
     return false
@@ -39,9 +41,9 @@ export default function Simulation() {
 
   const candidates = state.assets.filter((a) => {
     if (a.scenario) return false
-    if (kind === 'blockage') return a.type === 'manhole' && state.sensors.some((s) => s.assetId === a.id && s.type === 'level')
-    if (kind === 'leak') return a.type === 'manhole' && state.sensors.some((s) => s.assetId === a.id && s.type === 'flow') && upstreamHasFlow(a)
-    return a.type === 'pump_station'
+    if (kind === 'blockage') return a.type === 'manhole' && state.sensors.some((s) => s.assetId === a.id && s.type === 'level' && sensorIsUsable(s))
+    if (kind === 'leak') return a.type === 'manhole' && state.sensors.some((s) => s.assetId === a.id && s.type === 'flow' && sensorIsUsable(s)) && upstreamHasFlow(a)
+    return a.type === 'pump_station' && state.sensors.some((s) => s.assetId === a.id && s.type === 'pressure' && sensorIsUsable(s))
   })
   const [assetId, setAssetId] = useState('')
   const selected = candidates.find((a) => a.id === assetId) ?? candidates[0]
@@ -108,7 +110,7 @@ export default function Simulation() {
               return (
                 <li key={a.id} className="rounded-xl border border-slate-200 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <Link to={`/admin/assets/${a.id}`} className="font-bold text-brand underline">{a.id}</Link>
+                    <Link to={`/admin/sensors/${state.sensors.find((s) => s.assetId === a.id)?.id}`} className="font-bold text-brand underline">{a.id}</Link>
                     <span className="text-sm text-slate-600">{SCENARIOS[a.scenario.kind].label}</span>
                     <Badge>{x.condition}</Badge>
                   </div>

@@ -37,7 +37,7 @@ export default function SensorDetail() {
   const ticks = []
   for (let k = 6; k >= 0; k--) ticks.push(startOfDayMs(now) - k * DAY)
   const isManholeLevel = sensor.type === 'level' && asset.type === 'manhole'
-  const repairJob = state.workOrders.find((w) => w.sensorId === sensor.id && w.status !== 'Completed')
+  const repairJob = state.incidents.find((i) => i.sensorId === sensor.id && i.status !== 'Resolved')
 
   // Trend chart: last 7 days + today + projection forward
   let trend = null
@@ -54,7 +54,13 @@ export default function SensorDetail() {
   }
 
   function createRepair() {
-    actions.createWorkOrder({ assetId: asset.id, sensorId: sensor.id, kind: 'Sensor repair', title: `Repair sensor ${sensor.id} (${x.faultReason ?? 'low battery'})`, crewId: defaultCrew(state, asset.area), scheduledFor: now + DAY })
+    actions.createSensorRepair({
+      assetId: asset.id,
+      sensorId: sensor.id,
+      title: `Fix sensor ${sensor.id} at ${asset.landmark}`,
+      crewId: defaultCrew(state, asset.area),
+      scheduledFor: now + DAY,
+    })
   }
 
   return (
@@ -65,7 +71,7 @@ export default function SensorDetail() {
           <p className="text-sm font-semibold text-slate-500">{t.label}</p>
           <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">{sensor.id}</h1>
           <p className="text-slate-600">
-            <Link to={`/admin/assets/${asset.id}`} className="font-semibold text-brand underline">{asset.name}</Link>, {asset.landmark}, {asset.area}
+            {asset.name}, {asset.landmark}, {asset.area}
           </p>
         </div>
         <Badge>{x.status}</Badge>
@@ -175,16 +181,31 @@ export default function SensorDetail() {
           </Card>
 
           {(!x.healthy || sensor.battery < 20) && can(user, 'planWork') && (
-            <Card title="Repair">
+            <Card title="Send a crew">
               {repairJob ? (
                 <p className="text-sm">
-                  Repair job <Link to={`/admin/work-orders/${repairJob.id}`} className="font-semibold text-brand underline">{repairJob.id}</Link> is {repairJob.status.toLowerCase()}.
+                  Crew sent for this sensor. <Link to={`/admin/incidents/${repairJob.id}`} className="font-semibold text-brand underline">Open incident</Link>.
                 </p>
               ) : (
-                <button onClick={createRepair} className={`w-full ${buttonClass}`}>Create sensor repair job</button>
+                <button onClick={createRepair} className={`w-full ${buttonClass}`}>Send a crew to fix this sensor</button>
               )}
             </Card>
           )}
+
+          <Card title="Manhole">
+            <dl className="space-y-2 text-sm">
+              <div><dt className="text-slate-500">Name</dt><dd className="font-semibold">{asset.name}</dd></div>
+              <div><dt className="text-slate-500">Place</dt><dd>{asset.landmark}</dd></div>
+              <div><dt className="text-slate-500">Area</dt><dd>{asset.area}</dd></div>
+              <div><dt className="text-slate-500">Type</dt><dd>{asset.type === 'pump_station' ? 'Pump station' : 'Manhole'}</dd></div>
+              <div><dt className="text-slate-500">Depth</dt><dd>{asset.depthCm} cm</dd></div>
+              <div><dt className="text-slate-500">Why it matters</dt><dd>{asset.criticalityNote}</dd></div>
+              <div><dt className="text-slate-500">Installed</dt><dd>{asset.installedYear}</dd></div>
+            </dl>
+            <a href={`https://www.google.com/maps?q=${asset.lat},${asset.lng}`} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm font-semibold text-brand underline">
+              Open on map
+            </a>
+          </Card>
         </div>
       </div>
     </>

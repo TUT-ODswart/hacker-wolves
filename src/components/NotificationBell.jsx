@@ -5,6 +5,7 @@ import { useStore } from '../data/StoreContext.js'
 import { timeAgo } from '../utils/format.js'
 
 function notificationsFor(state, user) {
+  if (!user) return []
   return state.notifications.filter((n) => n.roles.includes(user.role) || n.userIds.includes(user.id))
 }
 

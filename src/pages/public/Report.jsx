@@ -174,7 +174,7 @@ export default function Report() {
                       Reported {timeAgo(i.reportedAt, now)} · {i.reportIds.length || 'No'} resident report{i.reportIds.length === 1 ? '' : 's'}
                     </span>
                   </span>
-                  <Badge>{i.status === 'Unattended' ? 'Received' : 'Crew assigned'}</Badge>
+                  <Badge>{i.status === 'Unattended' ? 'New' : 'Crew sent'}</Badge>
                 </label>
               ))}
               <label className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-white p-3 text-sm ${attachTo === '' ? 'border-brand' : 'border-slate-200'}`}>

@@ -75,7 +75,7 @@ export default function Sensors() {
                   <span className="font-bold">{s.id}</span>
                   <Badge>{x.status}</Badge>
                 </div>
-                <p className="text-sm text-slate-600">{SENSOR_TYPES[s.type].label} · {a.id}, {a.landmark}</p>
+                <p className="text-sm text-slate-600">{SENSOR_TYPES[s.type].label} · {a.name}, {a.area}</p>
                 <p className="mt-1 text-sm">
                   {readingText(x, s)} · Battery <span className={s.battery < 20 ? 'font-bold text-red-600' : ''}>{s.battery}%</span> · {timeAgo(new Date(x.lastSeen).toISOString(), now)}
                 </p>
@@ -89,7 +89,7 @@ export default function Sensors() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-300 text-slate-900">
               <tr>
-                {['Sensor ID', 'Location', 'Type', 'Status', 'Battery', 'Reading', 'Last reading', 'Issue'].map((h) => (
+                {['Sensor', 'Manhole', 'Type', 'Status', 'Battery', 'Reading', 'Last reading', 'Issue'].map((h) => (
                   <th key={h} className="px-4 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
@@ -98,7 +98,7 @@ export default function Sensors() {
               {rows.map(({ s, x, a }) => (
                 <tr key={s.id} onClick={() => navigate(`/admin/sensors/${s.id}`)} className="cursor-pointer hover:bg-slate-50">
                   <td className="px-4 py-3 font-bold text-brand">{s.id}</td>
-                  <td className="px-4 py-3">{a.id}, {a.landmark}<span className="block text-xs text-slate-500">{a.area}</span></td>
+                  <td className="px-4 py-3">{a.name}<span className="block text-xs text-slate-500">{a.landmark}, {a.area}</span></td>
                   <td className="px-4 py-3">{SENSOR_TYPES[s.type].label}</td>
                   <td className="px-4 py-3"><Badge>{x.status}</Badge></td>
                   <td className={`px-4 py-3 ${s.battery < 20 ? 'font-bold text-red-600' : ''}`}>{s.battery}%</td>

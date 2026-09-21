@@ -6,8 +6,6 @@ import { DEMO_OTP, ROLE_HOME, ROLES } from '../data/constants.js'
 
 const DEMO_ACCOUNTS = [
   { role: 'admin', email: 'admin@gmail.com', password: 'admin123' },
-  { role: 'supervisor', email: 'supervisor@gmail.com', password: 'super123' },
-  { role: 'manager', email: 'manager@gmail.com', password: 'manager123' },
   { role: 'technician', email: 'tech@gmail.com', password: 'tech123' },
 ]
 

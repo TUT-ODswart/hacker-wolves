@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Camera } from 'lucide-react'
+import { priorityLabel, statusLabel } from '../data/constants.js'
 import { resizeImage } from '../utils/format.js'
 
 const badgeStyles = {
@@ -17,17 +18,22 @@ const badgeStyles = {
   Unattended: 'bg-orange-100 text-orange-800',
   Pending: 'bg-violet-100 text-violet-800',
   Resolved: 'bg-blue-100 text-blue-800',
+  New: 'bg-orange-100 text-orange-800',
+  'Crew sent': 'bg-violet-100 text-violet-800',
+  Fixed: 'bg-blue-100 text-blue-800',
   Scheduled: 'bg-amber-100 text-amber-800',
   'In progress': 'bg-sky-100 text-sky-800',
   Completed: 'bg-green-100 text-green-800',
   High: 'bg-red-100 text-red-800',
   Medium: 'bg-amber-100 text-amber-800',
   Low: 'bg-slate-100 text-slate-700',
+  Urgent: 'bg-red-600 text-white',
+  Soon: 'bg-amber-500 text-white',
+  'Can wait': 'bg-slate-200 text-slate-700',
   Overdue: 'bg-red-600 text-white',
   Escalated: 'bg-red-600 text-white',
   Proactive: 'bg-brand-light text-brand-dark',
   Reactive: 'bg-slate-100 text-slate-700',
-  Planned: 'bg-indigo-100 text-indigo-800',
   'Sensor repair': 'bg-fuchsia-100 text-fuchsia-800',
   Sensor: 'bg-brand-light text-brand-dark',
   Resident: 'bg-sky-100 text-sky-800',
@@ -168,9 +174,26 @@ export function Photo({ src, label }) {
   return <img src={src} alt={label ?? ''} className="h-36 w-full rounded-xl object-cover" />
 }
 
+const priorityEmphasis = {
+  High: 'bg-red-600 text-white ring-2 ring-red-200',
+  Medium: 'bg-amber-500 text-white ring-2 ring-amber-200',
+  Low: 'bg-slate-200 text-slate-700',
+}
+
 export function PriorityBadge({ p }) {
   if (!p) return null
-  return <Badge tone={p.level}>{`${p.level} · ${p.score}`}</Badge>
+  const label = priorityLabel(p.level)
+  return (
+    <span className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${priorityEmphasis[p.level] ?? 'bg-slate-100 text-slate-700'}`}>
+      {label}
+    </span>
+  )
+}
+
+export function StatusBadge({ status }) {
+  if (!status) return null
+  const label = statusLabel(status)
+  return <Badge tone={label}>{label}</Badge>
 }
 
 export function BackLink({ to, children }) {

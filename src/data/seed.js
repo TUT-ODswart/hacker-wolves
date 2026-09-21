@@ -2,7 +2,7 @@ import { DAY, HOUR, MINUTE } from '../utils/format.js'
 import { analyzeNetwork } from './model.js'
 import { dueAt, iso, makePriority } from './helpers.js'
 
-export const STATE_VERSION = 4
+export const STATE_VERSION = 6
 
 export const AREAS = [
   { name: 'Soshanguve', lat: -25.525, lng: 28.1 },
@@ -58,9 +58,7 @@ export const DEFAULT_SETTINGS = {
 
 const USERS = [
   { id: 'U-1', name: 'Naledi Mokoena', email: 'admin@gmail.com', password: 'admin123', role: 'admin', phone: '071 555 0101', crewId: null },
-  { id: 'U-2', name: 'Johan van Wyk', email: 'supervisor@gmail.com', password: 'super123', role: 'supervisor', phone: '072 555 0102', crewId: null },
-  { id: 'U-3', name: 'Refilwe Dlamini', email: 'manager@gmail.com', password: 'manager123', role: 'manager', phone: '073 555 0103', crewId: null },
-  { id: 'U-4', name: 'Sipho Nkosi', email: 'tech@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0104', crewId: 'C-A' },
+  { id: 'U-4', name: 'Sipho Nkosi', email: 'tech@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0104', crewId: 'C-B' },
   { id: 'U-5', name: 'Thabo Mahlangu', email: 'thabo@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0105', crewId: 'C-A' },
   { id: 'U-6', name: 'Lerato Molefe', email: 'lerato@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0106', crewId: 'C-B' },
   { id: 'U-7', name: 'Kagiso Sithole', email: 'kagiso@gmail.com', password: 'tech123', role: 'technician', phone: '074 555 0107', crewId: 'C-B' },
@@ -128,18 +126,16 @@ function seeded(seed) {
   }
 }
 
-// Six months of completed repairs so the analytics have something to show.
+// Six months of completed repairs so Home can show "fixed before overflowing".
 function buildHistory(now, assets) {
   const rand = seeded(7)
   const manholes = assets.filter((a) => a.type === 'manhole')
   const incidents = []
-  const workOrders = []
   const counts = [9, 9, 10, 9, 10, 8]
   const proactiveShare = [0.2, 0.3, 0.4, 0.5, 0.6, 0.72]
   const responseHrs = [16, 13, 10, 7, 5, 3]
   const reactiveTypes = ['Overflowing manhole', 'Sewage on the street', 'Blocked drain']
   let inc = 1001
-  let wo = 3001
 
   counts.forEach((count, m) => {
     const monthsAgo = 6 - m
@@ -153,7 +149,6 @@ function buildHistory(now, assets) {
       const type = proactive ? (rand() < 0.75 ? 'Blockage' : 'Pipe leak') : resident ? reactiveTypes[Math.floor(rand() * 3)] : 'Overflowing manhole'
       const crewId = ['C-A', 'C-B', 'C-C', 'C-D'][AREAS.findIndex((x) => x.name === asset.area)]
       const incId = `INC-${inc++}`
-      const woId = `WO-${wo++}`
       const note = proactive ? 'Cleared build-up before it overflowed.' : 'Cleared blockage, cleaned and disinfected the area.'
 
       incidents.push({
@@ -163,15 +158,21 @@ function buildHistory(now, assets) {
         title: `${type} at ${asset.landmark}`,
         description: proactive ? 'Detected early from sensor trends.' : 'Sewage reached the surface.',
         assetId: asset.id,
+        sensorId: null,
         area: asset.area,
         lat: asset.lat,
         lng: asset.lng,
         status: 'Resolved',
+        kind: proactive ? 'Proactive' : 'Reactive',
         priority: makePriority(proactive ? 60 : 95, asset.criticality),
         prediction: null,
         reportIds: [],
         crewId,
-        workOrderId: woId,
+        scheduledFor: iso(assigned),
+        startedAt: iso(assigned + HOUR),
+        beforePhoto: null,
+        afterPhoto: null,
+        notes: note,
         reportedAt: iso(reported),
         assignedAt: iso(assigned),
         resolvedAt: iso(resolved),
@@ -180,33 +181,14 @@ function buildHistory(now, assets) {
         escalated: false,
         timeline: [
           { at: iso(reported), text: resident ? 'Reported by a resident' : proactive ? 'Detected by sensors before any overflow' : 'Detected by sensors' },
-          { at: iso(assigned), text: `Assigned to ${crewId.replace('C-', 'Crew ')}` },
-          { at: iso(resolved), text: `Resolved: ${note}` },
+          { at: iso(assigned), text: `Crew sent: ${crewId.replace('C-', 'Crew ')}` },
+          { at: iso(resolved), text: `Fixed: ${note}` },
         ],
         comments: [],
       })
-
-      workOrders.push({
-        id: woId,
-        incidentId: incId,
-        assetId: asset.id,
-        sensorId: null,
-        kind: proactive ? 'Proactive' : 'Reactive',
-        title: `${type} at ${asset.landmark}`,
-        crewId,
-        scheduledFor: iso(assigned),
-        status: 'Completed',
-        createdAt: iso(assigned),
-        createdBy: 'Johan van Wyk',
-        startedAt: iso(assigned + HOUR),
-        completedAt: iso(resolved),
-        beforePhoto: null,
-        afterPhoto: null,
-        notes: note,
-      })
     }
   })
-  return { incidents, workOrders, nextInc: inc, nextWo: wo }
+  return { incidents, nextInc: inc }
 }
 
 export function createSeedState(now) {
@@ -273,15 +255,21 @@ export function createSeedState(now) {
       title: `${type} at ${a.landmark}`,
       description: p ? `${p.label}. ${p.where}. ${p.summary}.` : 'Detected by sensors.',
       assetId,
+      sensorId: null,
       area: a.area,
       lat: a.lat,
       lng: a.lng,
       status,
+      kind: 'Proactive',
       priority,
       prediction: p ? { daysToFailure: p.daysToFailure, confidence: p.confidence, evidence: p.evidence } : null,
       reportIds: [],
       crewId: null,
-      workOrderId: null,
+      scheduledFor: null,
+      startedAt: null,
+      beforePhoto: null,
+      afterPhoto: null,
+      notes: '',
       reportedAt: iso(reported),
       assignedAt: null,
       resolvedAt: null,
@@ -294,24 +282,30 @@ export function createSeedState(now) {
     }
   }
 
+  const tomorrow = new Date(now + DAY)
+  tomorrow.setHours(8, 0, 0, 0)
+  const today9 = new Date(now)
+  today9.setHours(9, 0, 0, 0)
+
   const open = [
     sensorIncident('INC-1101', 'MH-202', 'Blockage', 'Pending', 26, {
       crewId: 'C-B',
-      workOrderId: 'WO-3101',
       assignedAt: iso(now - 24 * HOUR),
+      scheduledFor: iso(today9.getTime()),
+      startedAt: iso(now - 2 * HOUR),
     }),
     sensorIncident('INC-1102', 'MH-103', 'Blockage', 'Unattended', 3),
     sensorIncident('INC-1104', 'MH-305', 'Pipe leak', 'Unattended', 7),
     sensorIncident('INC-1105', 'PS-4', 'Rising main leak', 'Pending', 20, {
       crewId: 'C-D',
-      workOrderId: 'WO-3102',
       assignedAt: iso(now - 18 * HOUR),
+      scheduledFor: iso(tomorrow.getTime()),
     }),
   ]
-  open[0].timeline.push({ at: iso(now - 24 * HOUR), text: 'Assigned to Crew B by Johan van Wyk' })
-  open[3].timeline.push({ at: iso(now - 18 * HOUR), text: 'Assigned to Crew D by Johan van Wyk' })
-  open[0].comments.push({ at: iso(now - 23 * HOUR), user: 'Johan van Wyk', text: 'Clinic is open until 18:00. Please work outside clinic hours if possible.' })
-
+  open[0].timeline.push({ at: iso(now - 24 * HOUR), text: 'Crew sent: Crew B by Naledi Mokoena' })
+  open[0].timeline.push({ at: iso(now - 2 * HOUR), text: 'Lerato Molefe started work on site' })
+  open[3].timeline.push({ at: iso(now - 18 * HOUR), text: 'Crew sent: Crew D by Naledi Mokoena' })
+  open[0].comments.push({ at: iso(now - 23 * HOUR), user: 'Naledi Mokoena', text: 'Clinic is open until 18:00. Please work outside clinic hours if possible.' })
   const mh105 = asset('MH-105')
   const residentPriority = makePriority(100, mh105.criticality)
   open.push({
@@ -321,15 +315,21 @@ export function createSeedState(now) {
     title: `Sewage on the street at ${mh105.landmark}`,
     description: 'Sewage coming out of the manhole and running into the street. Note: the level sensor at MH-105 has been stuck for 3 days and did not catch this.',
     assetId: 'MH-105',
+    sensorId: null,
     area: 'Soshanguve',
     lat: mh105.lat,
     lng: mh105.lng,
     status: 'Unattended',
+    kind: 'Reactive',
     priority: residentPriority,
     prediction: null,
     reportIds: ['RPT-2001', 'RPT-2002', 'RPT-2003'],
     crewId: null,
-    workOrderId: null,
+    scheduledFor: null,
+    startedAt: null,
+    beforePhoto: null,
+    afterPhoto: null,
+    notes: '',
     reportedAt: reports[0].createdAt,
     assignedAt: null,
     resolvedAt: null,
@@ -353,15 +353,21 @@ export function createSeedState(now) {
     title: `Bad smell at ${mh404.landmark}`,
     description: 'Bad smell near the market stalls for three days.',
     assetId: 'MH-404',
+    sensorId: null,
     area: 'Winterveld',
     lat: mh404.lat,
     lng: mh404.lng,
     status: 'Pending',
+    kind: 'Reactive',
     priority: smellPriority,
     prediction: null,
     reportIds: ['RPT-2004'],
     crewId: 'C-D',
-    workOrderId: 'WO-3103',
+    scheduledFor: iso(today9.getTime()),
+    startedAt: null,
+    beforePhoto: null,
+    afterPhoto: null,
+    notes: '',
     reportedAt: reports[3].createdAt,
     assignedAt: iso(now - 16 * HOUR),
     resolvedAt: null,
@@ -370,53 +376,21 @@ export function createSeedState(now) {
     escalated: false,
     timeline: [
       { at: reports[3].createdAt, text: 'Reported by resident' },
-      { at: iso(now - 16 * HOUR), text: 'Assigned to Crew D by Johan van Wyk' },
+      { at: iso(now - 16 * HOUR), text: 'Crew sent: Crew D by Naledi Mokoena' },
     ],
     comments: [],
   })
-
-  const tomorrow = new Date(now + DAY)
-  tomorrow.setHours(8, 0, 0, 0)
-  const today9 = new Date(now)
-  today9.setHours(9, 0, 0, 0)
-
-  const openWOs = [
-    {
-      id: 'WO-3101', incidentId: 'INC-1101', assetId: 'MH-202', sensorId: null, kind: 'Proactive',
-      title: open[0].title, crewId: 'C-B', scheduledFor: iso(today9.getTime()), status: 'In progress',
-      createdAt: iso(now - 24 * HOUR), createdBy: 'Johan van Wyk', startedAt: iso(now - 2 * HOUR), completedAt: null,
-      beforePhoto: null, afterPhoto: null, notes: '',
-    },
-    {
-      id: 'WO-3102', incidentId: 'INC-1105', assetId: 'PS-4', sensorId: null, kind: 'Proactive',
-      title: open[3].title, crewId: 'C-D', scheduledFor: iso(tomorrow.getTime()), status: 'Scheduled',
-      createdAt: iso(now - 18 * HOUR), createdBy: 'Johan van Wyk', startedAt: null, completedAt: null,
-      beforePhoto: null, afterPhoto: null, notes: '',
-    },
-    {
-      id: 'WO-3103', incidentId: 'INC-1106', assetId: 'MH-404', sensorId: null, kind: 'Reactive',
-      title: open[5].title, crewId: 'C-D', scheduledFor: iso(today9.getTime()), status: 'Scheduled',
-      createdAt: iso(now - 16 * HOUR), createdBy: 'Johan van Wyk', startedAt: null, completedAt: null,
-      beforePhoto: null, afterPhoto: null, notes: '',
-    },
-    {
-      id: 'WO-3104', incidentId: null, assetId: 'MH-101', sensorId: null, kind: 'Planned',
-      title: 'Routine jetting and inspection, Block L line', crewId: 'C-A', scheduledFor: iso(tomorrow.getTime() + 2 * DAY), status: 'Scheduled',
-      createdAt: iso(now - 3 * DAY), createdBy: 'Johan van Wyk', startedAt: null, completedAt: null,
-      beforePhoto: null, afterPhoto: null, notes: '',
-    },
-  ]
 
   return {
     ...base,
     incidents: [...open, ...history.incidents],
     reports,
-    workOrders: [...openWOs, ...history.workOrders],
     notifications: [],
     sms: reports
       .filter((r) => r.phone)
       .map((r, i) => ({ id: `M-seed-${i}`, at: r.createdAt, to: `${r.name} (${r.phone})`, audience: 'Resident', text: `City of Tshwane: we received your report ${r.id}. Track it on our website.` })),
-    audit: [{ id: 'A-seed', at: iso(now - 24 * HOUR), user: 'Johan van Wyk', action: 'Assigned INC-1101 to Crew B' }],
+    audit: [{ id: 'A-seed', at: iso(now - 24 * HOUR), user: 'Naledi Mokoena', action: 'Sent Crew B to INC-1101' }],
     knownFaults: [],
+    simulationAlerts: {},
   }
 }

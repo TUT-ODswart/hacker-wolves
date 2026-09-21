@@ -4,8 +4,8 @@ import { ExternalLink, Radio, UserRound } from 'lucide-react'
 import { useStore } from '../../data/StoreContext.js'
 import { incidentPriority } from '../../data/model.js'
 import { defaultCrew, isOverdue } from '../../data/helpers.js'
-import { can } from '../../data/constants.js'
-import { BackLink, Badge, Card, Empty, Field, Photo, PriorityBadge, buttonClass, inputClass } from '../../components/ui.jsx'
+import { can, priorityLabel } from '../../data/constants.js'
+import { BackLink, Card, Empty, Field, Photo, PriorityBadge, StatusBadge, buttonClass, inputClass } from '../../components/ui.jsx'
 import { formatDateTime, timeAgo, toDateInput } from '../../utils/format.js'
 
 export default function IncidentDetail() {
@@ -17,6 +17,7 @@ export default function IncidentDetail() {
   const [closing, setClosing] = useState(false)
   const [reason, setReason] = useState('')
   const [comment, setComment] = useState('')
+  const [showWhy, setShowWhy] = useState(false)
 
   if (!incident) {
     return (
@@ -32,7 +33,6 @@ export default function IncidentDetail() {
   const problem = asset ? analysis.assets[asset.id].problem : null
   const evidence = problem?.evidence ?? incident.prediction?.evidence ?? null
   const reports = incident.reportIds.map((rid) => state.reports.find((r) => r.id === rid)).filter(Boolean)
-  const wo = state.workOrders.find((w) => w.id === incident.workOrderId)
   const crew = state.crews.find((c) => c.id === incident.crewId)
   const manage = can(user, 'manageIncidents')
 
@@ -47,40 +47,49 @@ export default function IncidentDetail() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-slate-500">{incident.id}</p>
           <h1 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">{incident.title}</h1>
+          <p className="text-xs text-slate-400">{incident.id}</p>
           <p className="text-slate-600">{incident.area}{asset ? ` · ${asset.name}` : ''}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <PriorityBadge p={p} />
-          <Badge>{incident.status}</Badge>
-          <Badge>{incident.source === 'sensor' ? 'Sensor' : 'Resident'}</Badge>
-          {isOverdue(incident, now) && <Badge>Overdue</Badge>}
-          {incident.escalated && incident.status === 'Unattended' && <Badge>Escalated</Badge>}
+          <StatusBadge status={incident.status} />
+          {isOverdue(incident, now) && <span className="rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-semibold text-white">Overdue</span>}
         </div>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Why this priority">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-xs text-slate-500">How likely</p>
-                <p className="text-2xl font-extrabold">{p.likelihood}<span className="text-sm text-slate-500">/100</span></p>
-                <p className="text-sm text-slate-600">{p.reason}</p>
+          <Card
+            title="Priority"
+            action={
+              <button type="button" onClick={() => setShowWhy((v) => !v)} className="text-sm font-semibold text-brand underline">
+                {showWhy ? 'Hide' : 'Why?'}
+              </button>
+            }
+          >
+            <p
+              className={`inline-block rounded-xl px-4 py-2 text-lg font-extrabold ${
+                p.level === 'High' ? 'bg-red-600 text-white' : p.level === 'Medium' ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700'
+              }`}
+            >
+              {priorityLabel(p.level)}
+            </p>
+            {showWhy && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">How likely</p>
+                  <p className="text-2xl font-extrabold">{p.likelihood}<span className="text-sm text-slate-500">/100</span></p>
+                  <p className="text-sm text-slate-600">{p.reason}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">How bad if it fails</p>
+                  <p className="text-2xl font-extrabold">{p.impact}<span className="text-sm text-slate-500">/5</span></p>
+                  <p className="text-sm text-slate-600">{p.impactNote}</p>
+                </div>
+                <p className="sm:col-span-2 text-xs text-slate-500">Priority = how likely × how bad. A problem near a clinic ranks above the same problem on a quiet street.</p>
               </div>
-              <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-xs text-slate-500">How bad if it fails</p>
-                <p className="text-2xl font-extrabold">{p.impact}<span className="text-sm text-slate-500">/5</span></p>
-                <p className="text-sm text-slate-600">{p.impactNote}</p>
-              </div>
-              <div className="rounded-xl bg-brand-light p-3">
-                <p className="text-xs text-brand-dark">Priority score</p>
-                <p className="text-2xl font-extrabold text-brand-dark">{p.score}<span className="text-sm">/100</span></p>
-                <p className="text-sm text-brand-dark">{p.level} priority</p>
-              </div>
-            </div>
-            <p className="mt-3 text-xs text-slate-500">Priority = how likely × how bad. A problem near a clinic ranks above the same problem on a quiet street.</p>
+            )}
           </Card>
 
           {evidence && (
@@ -111,10 +120,25 @@ export default function IncidentDetail() {
                     <p className="text-xs text-slate-500">{r.id} · {timeAgo(r.createdAt, now)} · {r.name || 'Anonymous'}{r.phone && r.consent ? ` · ${r.phone}` : ''}</p>
                     {r.address && <p className="text-sm text-slate-600">{r.address}</p>}
                     {r.description && <p className="mt-1 text-sm text-slate-700">{r.description}</p>}
-                    {r.rating && <p className="mt-1 text-xs text-amber-700">Rated the repair {r.rating.stars}/5</p>}
                   </div>
                 ))}
               </div>
+            </Card>
+          )}
+
+          {(incident.beforePhoto || incident.afterPhoto || incident.notes) && (
+            <Card title="Before and after">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="mb-1 text-sm font-semibold text-slate-600">Before</p>
+                  <Photo src={incident.beforePhoto} />
+                </div>
+                <div>
+                  <p className="mb-1 text-sm font-semibold text-slate-600">After</p>
+                  <Photo src={incident.afterPhoto} />
+                </div>
+              </div>
+              {incident.notes && <p className="mt-3 text-sm text-slate-700">Notes: {incident.notes}</p>}
             </Card>
           )}
 
@@ -131,18 +155,10 @@ export default function IncidentDetail() {
                   {incident.source === 'sensor' ? 'Detected by sensors' : 'Reported by residents'}
                 </dd>
               </div>
-              {incident.status !== 'Resolved' && (
-                <div>
-                  <dt className="text-slate-500">Response due</dt>
-                  <dd className={isOverdue(incident, now) ? 'font-bold text-red-600' : ''}>{formatDateTime(incident.dueAt)} ({timeAgo(incident.dueAt, now)})</dd>
-                </div>
-              )}
               {asset && (
                 <div>
-                  <dt className="text-slate-500">Location</dt>
-                  <dd>
-                    <Link to={`/admin/assets/${asset.id}`} className="font-semibold text-brand underline">{asset.name}</Link>, {asset.landmark}
-                  </dd>
+                  <dt className="text-slate-500">Manhole</dt>
+                  <dd>{asset.name}, {asset.landmark}</dd>
                 </div>
               )}
               <div>
@@ -159,14 +175,6 @@ export default function IncidentDetail() {
                   <dd>{crew.name}</dd>
                 </div>
               )}
-              {wo && (
-                <div>
-                  <dt className="text-slate-500">Work order</dt>
-                  <dd>
-                    <Link to={`/admin/work-orders/${wo.id}`} className="font-semibold text-brand underline">{wo.id}</Link> <Badge>{wo.status}</Badge>
-                  </dd>
-                </div>
-              )}
             </dl>
             {incident.description && <p className="mt-4 text-sm text-slate-700">{incident.description}</p>}
           </Card>
@@ -176,7 +184,7 @@ export default function IncidentDetail() {
           <Card title="Actions">
             {incident.status === 'Unattended' && manage && !closing && (
               <div className="space-y-3">
-                <Field label="Assign to crew">
+                <Field label="Send a crew">
                   <select value={crewId} onChange={(e) => setCrewId(e.target.value)} className={inputClass}>
                     {state.crews.filter((c) => c.active).map((c) => (
                       <option key={c.id} value={c.id}>{c.name} ({c.area})</option>
@@ -186,7 +194,7 @@ export default function IncidentDetail() {
                 <Field label="Date">
                   <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
                 </Field>
-                <button onClick={assign} className={`w-full ${buttonClass}`}>Assign and create work order</button>
+                <button onClick={assign} className={`w-full py-4 text-lg ${buttonClass}`}>Send a crew</button>
                 <button onClick={() => setClosing(true)} className="w-full text-sm text-slate-500 underline">Close without a repair (false alarm)</button>
               </div>
             )}
@@ -199,21 +207,23 @@ export default function IncidentDetail() {
                 <button onClick={() => setClosing(false)} className="w-full text-sm text-slate-500 underline">Cancel</button>
               </div>
             )}
-            {incident.status === 'Unattended' && !manage && <p className="text-sm text-slate-600">Waiting for a supervisor to assign a crew.</p>}
             {incident.status === 'Pending' && (
               <p className="text-sm text-slate-700">
-                {crew?.name} is handling this. {wo && <Link to={`/admin/work-orders/${wo.id}`} className="font-semibold text-brand underline">Open {wo.id}</Link>}
+                {crew?.name} has been sent{incident.startedAt ? ' and has started on site' : ''}.
+                {user.role === 'technician' && user.crewId === incident.crewId && (
+                  <> <Link to={`/admin/jobs/${incident.id}`} className="font-semibold text-brand underline">Open job</Link></>
+                )}
               </p>
             )}
             {incident.status === 'Resolved' && (
               <div className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">
-                Resolved {formatDateTime(incident.resolvedAt)}.<br />
+                Fixed {formatDateTime(incident.resolvedAt)}.<br />
                 {incident.resolutionNote}
               </div>
             )}
           </Card>
 
-          <Card title="Internal comments">
+          <Card title="Notes for the team">
             <ul className="space-y-3">
               {incident.comments.map((c, idx) => (
                 <li key={idx} className="rounded-xl bg-slate-50 p-3 text-sm">
@@ -221,7 +231,7 @@ export default function IncidentDetail() {
                   <p className="mt-1 text-xs text-slate-500">{c.user} · {timeAgo(c.at, now)}</p>
                 </li>
               ))}
-              {incident.comments.length === 0 && <li className="text-sm text-slate-500">No comments yet.</li>}
+              {incident.comments.length === 0 && <li className="text-sm text-slate-500">No notes yet.</li>}
             </ul>
             <form
               onSubmit={(e) => {
