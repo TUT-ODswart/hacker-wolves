@@ -133,7 +133,7 @@ export function readingAt(sensor, asset, t, now) {
     }
     if (f.kind === 'impossible') {
       const v = round(range * 2.3 + noise(hash(sensor.id), Math.floor(t / (15 * MINUTE))) * range * 0.05)
-      return { value: v, mA: 22 }
+      return { value: v, mA: 20 }
     }
   }
   const v = round(rawValue(sensor, asset, t, now))
@@ -426,8 +426,10 @@ export function analyzeNetwork(state, now) {
     if (!problem && vel && asset.type === 'manhole' && !levelRising) {
       let up = upstreamOf[asset.id]
       let upVel = null
+      // Compare with the nearest healthy flow meter upstream that is not affected by its own problem.
       while (up && !upVel) {
-        upVel = healthyOf(up.id, 'flow')
+        const cand = healthyOf(up.id, 'flow')
+        upVel = cand && (cand.a.stats.drop ?? 0) < 0.15 && !out[up.id]?.problem ? cand : null
         if (!upVel) up = upstreamOf[up.id]
       }
       if (upVel && vel.a.stats.mean24 != null && upVel.a.stats.mean24 != null) {

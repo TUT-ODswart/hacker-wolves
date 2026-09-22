@@ -1,20 +1,47 @@
 // Runs every few seconds: turns sensor analysis into incidents and alerts.
+// Every alert here comes from what the sensors show, not from the simulation timer.
 import { MINUTE } from '../utils/format.js'
 import { analyzeNetwork, incidentPriority } from './model.js'
 import { PROBLEM_TYPES } from './constants.js'
 import { audit, dueAt, iso, makePriority, nextId, notify, updateIn } from './helpers.js'
 
+const ADMIN = ['admin']
+
+function sameList(a, b) {
+  return [...a].sort().join() === [...b].sort().join()
+}
+
 export function engineTick(state, now) {
   const analysis = analyzeNetwork(state, now)
   let s = state
-  const simulationAlerts = { ...(s.simulationAlerts ?? {}) }
+  const createdNow = new Set()
 
-  // 1. New problems detected by sensors become incidents automatically.
+  // 1. Problems detected by sensors.
   for (const asset of s.assets) {
     const a = analysis.assets[asset.id]
     if (!a.problem || a.likelihood < 55) continue
-    if (s.incidents.some((i) => i.assetId === asset.id && i.status !== 'Resolved')) continue
     const type = PROBLEM_TYPES[a.problem.kind]
+    const prediction = { daysToFailure: a.problem.daysToFailure, confidence: a.problem.confidence, evidence: a.problem.evidence }
+    const open = s.incidents.find((i) => i.assetId === asset.id && i.status !== 'Resolved')
+
+    // 1a. Residents already reported this spot: add the sensor evidence instead of making a duplicate.
+    if (open) {
+      if (open.source === 'resident' && !open.sensorConfirmed) {
+        s = {
+          ...s,
+          incidents: updateIn(s.incidents, open.id, (i) => ({
+            sensorConfirmed: true,
+            prediction,
+            timeline: [...i.timeline, { at: iso(now), text: `Sensors confirm the problem: ${a.problem.label.toLowerCase()}. ${a.problem.summary}.` }],
+          })),
+        }
+        s = notify(s, { roles: ADMIN, title: `Sensors confirm ${open.id}`, body: `${asset.landmark}: ${a.problem.summary}.`, link: `/admin/incidents/${open.id}`, severity: 'high' }, now)
+        createdNow.add(asset.id)
+      }
+      continue
+    }
+
+    // 1b. New problem: create it.
     const priority = makePriority(a.likelihood, asset.criticality)
     const id = nextId(s.incidents, 'INC', 1000)
     const incident = {
@@ -31,7 +58,7 @@ export function engineTick(state, now) {
       status: 'Unattended',
       kind: 'Proactive',
       priority,
-      prediction: { daysToFailure: a.problem.daysToFailure, confidence: a.problem.confidence, evidence: a.problem.evidence },
+      prediction,
       reportIds: [],
       crewId: null,
       scheduledFor: null,
@@ -49,88 +76,57 @@ export function engineTick(state, now) {
       comments: [],
     }
     s = { ...s, incidents: [incident, ...s.incidents] }
-    s = notify(s, { roles: ['admin'], title: `Predicted: ${type.toLowerCase()} at ${asset.id}`, body: `${asset.landmark}. ${a.problem.summary}.`, link: `/admin/incidents/${id}`, severity: priority.level === 'High' ? 'high' : 'info' }, now)
+    s = notify(s, { roles: ADMIN, title: `New alert: ${type.toLowerCase()} at ${asset.landmark}`, body: `${asset.id}, ${asset.area}. ${a.problem.summary}.`, link: `/admin/incidents/${id}`, severity: priority.level === 'High' ? 'high' : 'info' }, now)
     s = audit(s, null, `Created ${id} from sensor data`, now)
+    createdNow.add(asset.id)
   }
 
-  // 2. Simulations notify admins as their evidence moves from prediction to danger.
+  // 2. A problem that gets worse (warning -> critical) raises a second, urgent alert.
+  const levels = { ...(s.alertLevels ?? {}) }
+  let levelsChanged = false
   for (const asset of s.assets) {
-    const scenario = asset.scenario
-    if (!scenario?.sim) continue
-
     const a = analysis.assets[asset.id]
-    const progress = Math.min(1, Math.max(0, (now - scenario.sim.startedAt) / scenario.sim.durationMs))
-    const sensors = Object.values(analysis.sensors).filter((x) => {
-      const sensor = s.sensors.find((item) => item.id === x.sensorId)
-      return sensor?.assetId === asset.id
-    })
-    const reachesAlert = sensors.some((sensor) => sensor.status === 'Alert')
-    const reachesCritical = a?.condition === 'Critical' || a?.problem?.likelihood >= 90 || progress >= 0.85
-    const reachesPrediction = (a?.problem && a.likelihood >= 55) || progress >= 0.25
-    const previous = simulationAlerts[asset.id]?.startedAt === scenario.sim.startedAt
-      ? simulationAlerts[asset.id]
-      : { startedAt: scenario.sim.startedAt }
-    const incident = s.incidents.find((i) => i.assetId === asset.id && i.status !== 'Resolved')
-    const link = incident ? `/admin/incidents/${incident.id}` : `/admin/sensors/${sensors[0]?.sensorId ?? ''}`
-
-    if (reachesPrediction && !previous.predicted) {
-      s = notify(
-        s,
-        {
-          roles: ['admin'],
-          title: `Simulation predicted: ${asset.id}`,
-          body: `${asset.landmark}. ${a?.problem?.summary ?? `The simulated ${scenario.kind.replace('_', ' ')} is now showing a predicted issue.`}`,
-          link,
-          severity: 'info',
-        },
-        now,
-      )
-      previous.predicted = true
+    const level = a.problem ? a.condition : null
+    const prev = levels[asset.id] ?? null
+    if (level === prev) continue
+    levelsChanged = true
+    if (level) levels[asset.id] = level
+    else delete levels[asset.id]
+    if (level === 'Critical' && !createdNow.has(asset.id)) {
+      const inc = s.incidents.find((i) => i.assetId === asset.id && i.status !== 'Resolved')
+      s = notify(s, {
+        roles: ADMIN,
+        title: `Critical: ${asset.landmark}`,
+        body: `${asset.id}, ${asset.area}. ${a.problem.summary}. Send a crew now.`,
+        link: inc ? `/admin/incidents/${inc.id}` : '/admin/incidents',
+        severity: 'high',
+      }, now)
     }
-    if ((reachesAlert || progress >= 0.6) && !previous.alert) {
-      s = notify(
-        s,
-        {
-          roles: ['admin'],
-          title: `Simulation alert: ${asset.id}`,
-          body: `${asset.landmark} has reached the sensor alert level.`,
-          link,
-          severity: 'high',
-        },
-        now,
-      )
-      previous.alert = true
-    }
-    if (reachesCritical && !previous.critical) {
-      s = notify(
-        s,
-        {
-          roles: ['admin'],
-          title: `Critical alert: ${asset.id}`,
-          body: `${asset.landmark} has reached a critical condition and needs urgent attention.`,
-          link,
-          severity: 'high',
-        },
-        now,
-      )
-      previous.critical = true
-    }
-    simulationAlerts[asset.id] = previous
   }
-  s = { ...s, simulationAlerts }
+  if (levelsChanged) s = { ...s, alertLevels: levels }
 
   // 3. Sensors that stop working or start giving bad readings.
   const faulty = Object.values(analysis.sensors).filter((x) => !x.healthy)
-  const faultyIds = faulty.map((x) => x.sensorId).sort()
+  const faultyIds = faulty.map((x) => x.sensorId)
   const known = s.knownFaults ?? []
   for (const f of faulty) {
     if (known.includes(f.sensorId)) continue
     const sensor = s.sensors.find((x) => x.id === f.sensorId)
-    s = notify(s, { roles: ['admin'], title: `Sensor ${f.sensorId} ${f.status === 'Offline' ? 'offline' : 'faulty'}`, body: `${sensor.assetId}: ${f.faultReason}. Its readings are ignored until it is fixed.`, link: `/admin/sensors/${f.sensorId}` }, now)
+    s = notify(s, { roles: ADMIN, title: `Sensor ${f.sensorId} ${f.status === 'Offline' ? 'offline' : 'faulty'}`, body: `${sensor.assetId}: ${f.faultReason}. Its readings are ignored until it is fixed.`, link: `/admin/sensors/${f.sensorId}` }, now)
   }
-  if (faultyIds.join() !== [...known].sort().join()) s = { ...s, knownFaults: faultyIds }
+  if (!sameList(faultyIds, known)) s = { ...s, knownFaults: faultyIds }
 
-  // 4. Escalate high-priority problems nobody has picked up (notify admin).
+  // 4. Batteries running flat.
+  const low = s.sensors.filter((x) => x.battery < 20).map((x) => x.id)
+  const knownLow = s.knownLowBattery ?? []
+  for (const id of low) {
+    if (knownLow.includes(id)) continue
+    const sensor = s.sensors.find((x) => x.id === id)
+    s = notify(s, { roles: ADMIN, title: `Sensor ${id} battery low`, body: `${sensor.assetId}: battery at ${sensor.battery}%. Replace it on the next visit.`, link: `/admin/sensors/${id}` }, now)
+  }
+  if (!sameList(low, knownLow)) s = { ...s, knownLowBattery: low }
+
+  // 5. Urgent problems nobody has sent a crew to.
   const limit = s.settings.escalationMinutes * MINUTE
   for (const inc of s.incidents) {
     if (inc.status !== 'Unattended' || inc.escalated) continue
@@ -144,8 +140,9 @@ export function engineTick(state, now) {
         timeline: [...i.timeline, { at: iso(now), text: `Still waiting for a crew after ${s.settings.escalationMinutes} min` }],
       })),
     }
-    s = notify(s, { roles: ['admin'], title: `Still new: ${inc.id} needs a crew`, body: `${inc.title} has waited more than ${s.settings.escalationMinutes} min.`, link: `/admin/incidents/${inc.id}`, severity: 'high' }, now)
+    s = notify(s, { roles: ADMIN, title: `Still waiting: ${inc.id} needs a crew`, body: `${inc.title} has waited more than ${s.settings.escalationMinutes} min.`, link: `/admin/incidents/${inc.id}`, severity: 'high' }, now)
   }
 
+  // Returning the same object when nothing changed stops needless saving and re-rendering.
   return s
 }

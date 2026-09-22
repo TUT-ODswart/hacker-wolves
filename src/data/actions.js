@@ -87,7 +87,7 @@ export function submitReport(s, p, { now }) {
         timeline: [...i.timeline, { at: iso(now), text: `Another resident reported this (${count} reports)` }],
       })),
     }
-    s = notify(s, { roles: ADMIN, title: `${count} residents now reporting ${inc.id}`, body: inc.title, link: `/admin/incidents/${inc.id}` }, now)
+    s = notify(s, { roles: ADMIN, title: `${count} residents now reporting ${inc.id}`, body: inc.title, link: `/admin/incidents/${inc.id}`, size: 'small' }, now)
   } else {
     const impact = asset?.criticality ?? 3
     const priority = makePriority(RESIDENT_LIKELIHOOD[p.type] ?? 60, impact)
@@ -119,7 +119,7 @@ export function submitReport(s, p, { now }) {
       comments: [],
     }
     s = { ...s, incidents: [incident, ...s.incidents] }
-    s = notify(s, { roles: ADMIN, title: `New resident report: ${p.type}`, body: `${place}, ${p.area}.`, link: `/admin/incidents/${incident.id}`, severity: priority.level === 'High' ? 'high' : 'info' }, now)
+    s = notify(s, { roles: ADMIN, title: `New resident report: ${p.type}`, body: `${place}, ${p.area}.`, link: `/admin/incidents/${incident.id}`, size: 'small', severity: priority.level === 'High' ? 'high' : 'info' }, now)
   }
 
   if (report.phone && report.consent) {

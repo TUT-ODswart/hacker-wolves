@@ -125,7 +125,13 @@ export default function Simulation() {
                   <p className="mt-1 text-sm text-slate-700">{x.problem ? x.problem.summary : 'Nothing detected yet'}</p>
                   <div className="mt-2 flex items-center justify-between">
                     {inc ? (
-                      <Link to={`/admin/incidents/${inc.id}`} className="text-sm font-semibold text-green-700 underline">Incident {inc.id} created automatically</Link>
+                      <Link to={`/admin/incidents/${inc.id}`} className="text-sm font-semibold text-green-700 underline">
+                        {inc.source === 'resident'
+                          ? inc.sensorConfirmed
+                            ? `Sensors confirmed ${inc.id} (already reported by residents)`
+                            : `Residents already reported this as ${inc.id}`
+                          : `Incident ${inc.id} created automatically`}
+                      </Link>
                     ) : (
                       <span className="text-sm text-slate-500">Waiting for enough evidence…</span>
                     )}

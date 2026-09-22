@@ -9,8 +9,9 @@ export function nextId(list, prefix, start) {
 }
 
 // audience: { roles: [...], userIds: [...] }
-export function notify(s, { roles = [], userIds = [], title, body, link, severity = 'info' }, now) {
-  const n = { id: `N-${now}-${s.notifications.length}`, at: iso(now), roles, userIds, title, body, link, severity, readBy: [] }
+// size 'small' shows as a quiet popup in the corner instead of the big one at the top.
+export function notify(s, { roles = [], userIds = [], title, body, link, severity = 'info', size = 'big' }, now) {
+  const n = { id: `N-${now}-${s.notifications.length}`, at: iso(now), roles, userIds, title, body, link, severity, size, readBy: [] }
   return { ...s, notifications: [n, ...s.notifications].slice(0, 150) }
 }
 

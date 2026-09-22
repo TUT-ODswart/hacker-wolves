@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer, Tooltip } from 'recharts'
 import { useStore } from '../../data/StoreContext.js'
 import { incidentPriority } from '../../data/model.js'
 import { Card, Empty, PriorityBadge } from '../../components/ui.jsx'
 import NetworkMap from '../../components/NetworkMap.jsx'
-import { DAY, percent, timeAgo } from '../../utils/format.js'
+import { DAY, timeAgo } from '../../utils/format.js'
 
 const CHART_COLORS = { Fixed: '#4a7ef5', 'Crew sent': '#b18cf2', New: '#f2b56b' }
 
@@ -16,9 +16,13 @@ export default function AdminHome() {
     'Crew sent': state.incidents.filter((i) => i.status === 'Pending').length,
     New: state.incidents.filter((i) => i.status === 'Unattended').length,
   }
-  const total = counts.Fixed + counts['Crew sent'] + counts.New
   const open = counts['Crew sent'] + counts.New
-  const chartData = Object.entries(counts).map(([name, value]) => ({ name, value }))
+  const working = state.incidents.filter((i) => i.status === 'Pending' && i.startedAt).length
+  const fixed30 = state.incidents.filter((i) => i.status === 'Resolved' && i.resolvedAt && now - new Date(i.resolvedAt).getTime() < 30 * DAY).length
+  const chartData = [
+    { name: 'Still open', New: counts.New, 'Crew sent': counts['Crew sent'] },
+    { name: 'Fixed (last 30 days)', Fixed: fixed30 },
+  ]
 
   const newIncidents = state.incidents
     .filter((i) => i.status === 'Unattended')
@@ -50,32 +54,38 @@ export default function AdminHome() {
       </p>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-5">
-        <Card title="Incidents status" className="xl:col-span-2">
-          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center xl:flex-col 2xl:flex-row">
-            <div className="h-48 w-48 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={chartData} dataKey="value" nameKey="name" innerRadius="48%" outerRadius="90%" startAngle={90} endAngle={-270} stroke="none" isAnimationActive={false}>
-                    {chartData.map((d) => (
-                      <Cell key={d.name} fill={CHART_COLORS[d.name]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <ul className="space-y-3">
-              {chartData.map((d) => (
-                <li key={d.name} className="flex items-center gap-3">
-                  <span className="h-4 w-4 rounded" style={{ background: CHART_COLORS[d.name] }} />
-                  <span className="w-24 text-slate-800">{d.name}</span>
-                  <span className="font-bold">{d.value}</span>
-                  <span className="text-sm text-slate-500">({percent(d.value, total)}%)</span>
-                </li>
-              ))}
-              <li className="pt-1 text-sm text-slate-500">{open} still open</li>
-            </ul>
+        <Card title="Jobs" className="xl:col-span-2">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <Link to="/admin/incidents?tab=Still%20open" className="rounded-xl bg-red-50 p-3 hover:ring-2 hover:ring-red-200">
+              <p className="text-3xl font-extrabold text-red-700">{open}</p>
+              <p className="text-xs font-semibold text-red-800">Still open</p>
+            </Link>
+            <Link to="/admin/incidents?tab=Crew%20sent" className="rounded-xl bg-violet-50 p-3 hover:ring-2 hover:ring-violet-200">
+              <p className="text-3xl font-extrabold text-violet-700">{counts['Crew sent']}</p>
+              <p className="text-xs font-semibold text-violet-800">Crew sent</p>
+            </Link>
+            <Link to="/admin/incidents?tab=Fixed" className="rounded-xl bg-blue-50 p-3 hover:ring-2 hover:ring-blue-200">
+              <p className="text-3xl font-extrabold text-blue-700">{fixed30}</p>
+              <p className="text-xs font-semibold text-blue-800">Fixed (30 days)</p>
+            </Link>
           </div>
+          <div className="mt-4 h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                <Tooltip cursor={{ fill: '#f1f5f9' }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="New" stackId="a" fill={CHART_COLORS.New} isAnimationActive={false} />
+                <Bar dataKey="Crew sent" stackId="a" fill={CHART_COLORS['Crew sent']} isAnimationActive={false} />
+                <Bar dataKey="Fixed" stackId="a" fill={CHART_COLORS.Fixed} isAnimationActive={false} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            {open} still open: {counts.New} waiting for a crew, {counts['Crew sent']} with a crew{working > 0 ? ` (${working} working on site now)` : ''}.
+          </p>
         </Card>
 
         <Card title="New incidents" className="xl:col-span-3" action={<Link to="/admin/incidents" className="text-sm font-semibold text-brand underline">All incidents</Link>}>

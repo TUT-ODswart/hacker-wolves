@@ -63,6 +63,21 @@ export default function StoreProvider({ children }) {
     }
   }, [state])
 
+  // Another browser tab (e.g. the resident report form) changed the data: load it here too.
+  useEffect(() => {
+    function onStorage(e) {
+      if (e.key !== STORAGE_KEY || !e.newValue) return
+      try {
+        const next = JSON.parse(e.newValue)
+        if (next?.version === STATE_VERSION) setState(next)
+      } catch {
+        // ignore bad data
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
   const analysis = useMemo(() => analyzeNetwork(state, now), [state, now])
   const user = state.users.find((u) => u.id === sessionId && u.active) ?? null
 

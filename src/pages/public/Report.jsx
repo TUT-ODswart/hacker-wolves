@@ -5,7 +5,12 @@ import { useStore } from '../../data/StoreContext.js'
 import { AREAS } from '../../data/seed.js'
 import { EMERGENCY_LINE, REPORT_TYPES } from '../../data/constants.js'
 import { PhotoInput, inputClass, Badge } from '../../components/ui.jsx'
-import { timeAgo } from '../../utils/format.js'
+import { distanceKm, timeAgo } from '../../utils/format.js'
+
+// The pilot area closest to a GPS point, and how far away it is.
+function nearestArea(point) {
+  return AREAS.map((a) => ({ name: a.name, km: distanceKm(point, a) })).sort((a, b) => a.km - b.km)[0]
+}
 
 export default function Report() {
   const { state, now, actions } = useStore()
@@ -18,6 +23,7 @@ export default function Report() {
   const [coords, setCoords] = useState(null)
   const [locating, setLocating] = useState(false)
   const [locationError, setLocationError] = useState('')
+  const [areaNote, setAreaNote] = useState('')
   const [photo, setPhoto] = useState(null)
   const [description, setDescription] = useState('')
   const [name, setName] = useState('')
@@ -42,7 +48,16 @@ export default function Report() {
     setLocationError('')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        const point = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        setCoords(point)
+        // Fill in the area automatically so the resident doesn't have to.
+        const near = nearestArea(point)
+        setArea(near.name)
+        setAreaNote(
+          near.km > 15
+            ? `You seem to be outside our pilot areas, so we chose the closest one (${near.name}). Change it above if needed.`
+            : `Area filled in from your location: ${near.name}. Change it above if it's wrong.`,
+        )
         setLocating(false)
       },
       () => {
@@ -139,7 +154,13 @@ export default function Report() {
 
         <fieldset className="space-y-3">
           <legend className="font-bold text-slate-900">Where is it? *</legend>
-          <select value={area} onChange={(e) => setArea(e.target.value)} required disabled={!!qrAsset} className={inputClass}>
+          <select
+            value={area}
+            onChange={(e) => {
+              setArea(e.target.value)
+              setAreaNote('')
+            }}
+            required disabled={!!qrAsset} className={inputClass}>
             <option value="">Choose your area</option>
             {AREAS.map((a) => (
               <option key={a.name} value={a.name}>{a.name}</option>
@@ -153,6 +174,7 @@ export default function Report() {
             </button>
           )}
           {locationError && <p className="text-sm text-red-600">{locationError}</p>}
+          {areaNote && <p className="text-sm text-brand-dark">{areaNote}</p>}
         </fieldset>
 
         {area && (nearby.length > 0 || autoDuplicate) && (
@@ -221,6 +243,8 @@ export default function Report() {
           >
             Send report
           </button>
+          {!type && <p className="mt-2 text-center text-sm font-semibold text-slate-600">Choose what you see at the top to send the report.</p>}
+          {type && !area && <p className="mt-2 text-center text-sm font-semibold text-slate-600">Choose your area, or tap "Use my current location".</p>}
           {wantsContact && !consent && <p className="mt-2 text-center text-sm text-slate-500">Tick the consent box, or clear your name and number to report anonymously.</p>}
           <p className="mt-3 text-center text-sm text-slate-500">Do not touch sewage. Keep children and pets away from the area.</p>
         </div>

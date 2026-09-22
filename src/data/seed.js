@@ -1,8 +1,9 @@
 import { DAY, HOUR, MINUTE } from '../utils/format.js'
 import { analyzeNetwork } from './model.js'
+import { engineTick } from './engine.js'
 import { dueAt, iso, makePriority } from './helpers.js'
 
-export const STATE_VERSION = 6
+export const STATE_VERSION = 7
 
 export const AREAS = [
   { name: 'Soshanguve', lat: -25.525, lng: 28.1 },
@@ -381,7 +382,7 @@ export function createSeedState(now) {
     comments: [],
   })
 
-  return {
+  const seeded = {
     ...base,
     incidents: [...open, ...history.incidents],
     reports,
@@ -391,6 +392,9 @@ export function createSeedState(now) {
       .map((r, i) => ({ id: `M-seed-${i}`, at: r.createdAt, to: `${r.name} (${r.phone})`, audience: 'Resident', text: `City of Tshwane: we received your report ${r.id}. Track it on our website.` })),
     audit: [{ id: 'A-seed', at: iso(now - 24 * HOUR), user: 'Naledi Mokoena', action: 'Sent Crew B to INC-1101' }],
     knownFaults: [],
-    simulationAlerts: {},
+    knownLowBattery: [],
+    alertLevels: {},
   }
+  // Run the engine once so the starting alerts are already in the bell, instead of all popping up at login.
+  return engineTick(seeded, now - MINUTE)
 }
